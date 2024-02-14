@@ -1,4 +1,4 @@
-package reddit
+package api
 
 import (
 	// "log"
@@ -6,15 +6,15 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 	"regexp"
-	"runtime"
 	"strings"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/go-resty/resty/v2"
 	"github.com/go-shiori/go-readability"
+
+	utils "github.com/soumitsalman/data-utils"
 )
 
 const REDDIT_DATA_URL = "https://oauth.reddit.com"
@@ -108,11 +108,16 @@ func (msg AuthFailureMessage) Error() string {
 }
 
 // authenticate the user and returns a retrieval client
-func NewClient(app_name, app_id, app_secret, user_name, user_pw string) (*RedditClient, error) {
-	unpw := url.Values{}
-	unpw.Set("grant_type", "password")
-	unpw.Set("username", user_name)
-	unpw.Set("password", user_pw)
+func NewRedditClient(app_id, app_secret, user_name, user_pw string) (*RedditClient, error) {
+	// unpw := url.Values{}
+	// unpw.Set("grant_type", "password")
+	// unpw.Set("username", user_name)
+	// unpw.Set("password", user_pw)
+	unpw := map[string]string{
+		"grant_type": "password",
+		"username":   user_name,
+		"password":   user_pw,
+	}
 
 	var auth_result struct {
 		AccessToken    string `json:"access_token"`
@@ -121,9 +126,11 @@ func NewClient(app_name, app_id, app_secret, user_name, user_pw string) (*Reddit
 
 	resty.New().R().
 		SetBasicAuth(app_id, app_secret).
-		SetHeader("User-Agent", getUserAgent(app_name)).
-		SetHeader("Content-Type", "application/x-www-form-urlencoded").
-		SetBody(unpw.Encode()).
+		SetHeader("User-Agent", getUserAgent()).
+		SetHeader("Content-Type", URL_ENCODED_BODY).
+		SetFormData(unpw).
+		// SetFormDataFromValues(unpw).
+		// SetBody(unpw.Encode()).
 		SetResult(&auth_result).
 		SetError(&auth_result).
 		Post(REDDIT_OAUTH_URL)
@@ -133,20 +140,20 @@ func NewClient(app_name, app_id, app_secret, user_name, user_pw string) (*Reddit
 		return nil, AuthFailureMessage(auth_result.FailureMessage)
 	}
 
-	log.Println("Authentication Succeeded")
-	client := NewAuthenticatedClient(app_name, auth_result.AccessToken)
+	log.Println("Authentication Succeeded for", user_name)
+	client := NewAuthenticatedRedditClient(auth_result.AccessToken)
 	client.User.Username = user_name
 	return client, nil
 }
 
 // create a client from an existing auth token
-func NewAuthenticatedClient(app_name, auth_token string) *RedditClient {
+func NewAuthenticatedRedditClient(auth_token string) *RedditClient {
 	return &RedditClient{
 		User: &RedditUser{AuthToken: auth_token},
 		http_client: resty.New().
 			SetTimeout(MAX_WAIT_TIME).
 			SetBaseURL(REDDIT_DATA_URL).
-			SetHeader("User-Agent", getUserAgent(app_name)).
+			SetHeader("User-Agent", getUserAgent()).
 			SetAuthToken(auth_token),
 	}
 }
@@ -242,11 +249,6 @@ func (client *RedditClient) RetrieveComments(post *RedditItem) ([]RedditItem, er
 
 // internal utility functions
 
-func getUserAgent(app_name string) string {
-	//Windows:My Reddit Bot:1.0 (by u/botdeveloper)
-	return fmt.Sprintf("%v:%v:v0.1 (by u/randomizer_000)", runtime.GOOS, app_name)
-}
-
 func (listing_data *listingData) getItems(kind string) []RedditItem {
 	items := make([]RedditItem, len(listing_data.Data.Children))
 	var counter int = 0
@@ -301,25 +303,31 @@ func extractTextFromUrl(url string) string {
 		".png", ".jpeg", ".jpg", ".gif", ".webp",
 		".mp4", ".avi", ".mkv",
 	}
-	compare := func(url, skip string) bool {
-		return strings.HasPrefix(url, skip) || strings.HasSuffix(url, skip)
+	compare := func(url, skip *string) bool {
+		return strings.HasPrefix(*url, *skip) || strings.HasSuffix(*url, *skip)
 	}
-	if Contains[string](url, skip_urls, compare) {
+	if utils.In[string](url, skip_urls, compare) {
 		return ""
 	}
 
 	// this being done to skip bot detection
 	client := &http.Client{Timeout: MAX_WAIT_TIME}
 	req, _ := http.NewRequest(http.MethodGet, url, nil)
-	req.Header.Set("User-Agent", getUserAgent(getAppName()))
+	req.Header.Set("User-Agent", getUserAgent())
+	req.Header.Set("Accept", "text/html")
 	// then check content-type to not parse through MIME content
 	if resp, err := client.Do(req); (err == nil) && (resp.StatusCode == http.StatusOK) && (strings.Contains(resp.Header.Get("Content-Type"), "text/html")) {
 		// log.Println("parsing url content", url)
 		article, _ := readability.FromReader(resp.Body, resp.Request.URL)
 		return article.TextContent
+	} else {
+		// TODO: disable the error messages
+		log.Println("couldn't parse url:", url, "| err:", err)
+		if resp != nil {
+			log.Println("StatusCode:", resp.StatusCode, "| Content-Type:", resp.Header.Get("Content-Type"))
+		}
+		return ""
 	}
-	log.Println("couldn't parse url", url)
-	return ""
 }
 
 // extract text from HTML fields
@@ -350,15 +358,6 @@ func cleanupText(text string, max_length int) string {
 		max_length = len(text)
 	}
 	return text[:max_length]
-}
-
-func Contains[T any](item T, list []T, compare func(a, b T) bool) bool {
-	for _, v := range list {
-		if compare(item, v) {
-			return true
-		}
-	}
-	return false
 }
 
 func extractItemKind(kind string) string {

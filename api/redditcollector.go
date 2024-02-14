@@ -1,8 +1,11 @@
-package reddit
+package api
 
 import (
 	"fmt"
+	"log"
 	"strings"
+
+	ds "github.com/soumitsalman/media-content-service/api"
 )
 
 const (
@@ -18,6 +21,7 @@ const (
 	REDDIT_SOURCE = "REDDIT"
 )
 
+// TODO: update with utils
 func MapToArray[TKey comparable, TValue any](list map[TKey]TValue) ([]TKey, []TValue) {
 	keys := make([]TKey, 0, len(list))
 	values := make([]TValue, 0, len(list))
@@ -28,6 +32,7 @@ func MapToArray[TKey comparable, TValue any](list map[TKey]TValue) ([]TKey, []TV
 	return keys, values
 }
 
+// TODO: update with utils
 func AppendMaps[TKey comparable, TValue any](to_map, from_map map[TKey]TValue) map[TKey]TValue {
 	for key, val := range from_map {
 		to_map[key] = val
@@ -35,40 +40,23 @@ func AppendMaps[TKey comparable, TValue any](to_map, from_map map[TKey]TValue) m
 	return to_map
 }
 
-func CollectAllUserItems() ([]*ContentItem, []*EngagementItem) {
-	var temp_contents = make(map[string]*ContentItem)
-	var engagements = make([]*EngagementItem, 0, 5)
+// func CollectItems(user *RedditUser) ([]*ds.MediaContentItem, []*ds.UserEngagementItem) {
+// func (client *RedditClient) CollectItems() {
+// 	temp_contents, temp_engagements := client.collectItems_map()
+// 	_, contents := MapToArray[string, *ds.MediaContentItem](temp_contents)
+// 	_, engagements := MapToArray[string, *ds.UserEngagementItem](temp_engagements)
 
-	for _, user := range GetRedditUsers() {
-		user_contents, user_engagements := collectOneUserItems_map(&user)
-		temp_contents = AppendMaps(temp_contents, user_contents)
-		_, temp_engagements := MapToArray[string, *EngagementItem](user_engagements)
-		engagements = append(engagements, temp_engagements...)
-	}
+// 	StoreNewContents(contents)
+// 	StoreNewEngagements(engagements)
+// 	// return contents, engagements
+// }
 
-	_, contents := MapToArray[string, *ContentItem](temp_contents)
-	// log.Println(len(contents), "contents collected", "|", len(engagements), "engagements collected")
-
-	return contents, engagements
-}
-
-func CollectOneUserItems(user *RedditUser) ([]*ContentItem, []*EngagementItem) {
-	temp_contents, temp_engagements := collectOneUserItems_map(user)
-	_, contents := MapToArray[string, *ContentItem](temp_contents)
-	_, engagements := MapToArray[string, *EngagementItem](temp_engagements)
-	return contents, engagements
-}
-
-func collectOneUserItems_map(user *RedditUser) (map[string]*ContentItem, map[string]*EngagementItem) {
-	// instantiate client for data collection
-	client := newRedditClient(user)
+func (client *RedditClient) CollectItems() ([]*ds.MediaContentItem, []*ds.UserEngagementItem) {
 	if client == nil {
 		return nil, nil
 	}
 
-	var user_contents = make(map[string]*ContentItem)
-	var user_engagements = make(map[string]*EngagementItem)
-
+	var user_contents, user_engagements = make(map[string]*ds.MediaContentItem), make(map[string]*ds.UserEngagementItem)
 	collect := func(reddit_item *RedditItem, collect_similar bool) []RedditItem {
 		//check cache
 		if _, ok := user_contents[reddit_item.Name]; !ok {
@@ -81,6 +69,8 @@ func collectOneUserItems_map(user *RedditUser) (map[string]*ContentItem, map[str
 		}
 		return nil
 	}
+
+	log.Println("Starting collection for u/", client.User.Username)
 
 	var subreddits, _ = client.Subreddits()
 	for _, sr := range subreddits {
@@ -98,11 +88,21 @@ func collectOneUserItems_map(user *RedditUser) (map[string]*ContentItem, map[str
 		}
 	}
 
-	return user_contents, user_engagements
+	_, contents := MapToArray[string, *ds.MediaContentItem](user_contents)
+	_, engagements := MapToArray[string, *ds.UserEngagementItem](user_engagements)
+
+	log.Printf("Finished collection for u/%s | %d contents, %d engagements\n", client.User.Username, len(contents), len(engagements))
+
+	StoreNewContents(contents)
+	StoreNewEngagements(engagements)
+
+	log.Println("Finished storing for u/", client.User.Username)
+
+	return contents, engagements
 }
 
-func collectRedditItem(client *RedditClient, item *RedditItem, collect_similar bool) (*ContentItem, *EngagementItem, []RedditItem) {
-	var content_item *ContentItem
+func collectRedditItem(client *RedditClient, item *RedditItem, collect_similar bool) (*ds.MediaContentItem, *ds.UserEngagementItem, []RedditItem) {
+	var content_item *ds.MediaContentItem
 	var children []RedditItem
 	// if it is a subreddit then get the top X posts
 	switch item.Kind {
@@ -129,17 +129,17 @@ func collectRedditItem(client *RedditClient, item *RedditItem, collect_similar b
 	return content_item, newEngagementItem(client.User, item), children
 }
 
-func newRedditClient(user *RedditUser) *RedditClient {
+func NewCollectorClient(user *RedditUser) *RedditClient {
 	// an auth token already exists
 	if user.AuthToken != "" {
-		return NewAuthenticatedClient(getAppName(), user.AuthToken)
+		return NewAuthenticatedRedditClient(user.AuthToken)
 	} else {
-		client, _ := NewClient(getAppName(), getAppId(), getAppSecret(), user.Username, user.Password)
+		client, _ := NewRedditClient(getAppId(), getAppSecret(), user.Username, user.Password)
 		return client
 	}
 }
 
-func newContentItem(item *RedditItem, children []RedditItem) *ContentItem {
+func newContentItem(item *RedditItem, children []RedditItem) *ds.MediaContentItem {
 	// special case arbiration functions
 	subscribers := func() int {
 		switch item.Kind {
@@ -194,7 +194,7 @@ func newContentItem(item *RedditItem, children []RedditItem) *ContentItem {
 	}
 
 	// create the top level instance for item
-	return &ContentItem{
+	return &ds.MediaContentItem{
 		Source:        REDDIT_SOURCE,
 		Id:            item.Name,
 		Title:         item.Title,
@@ -215,11 +215,11 @@ func newContentItem(item *RedditItem, children []RedditItem) *ContentItem {
 	}
 }
 
-func newEngagementItem(user *RedditUser, item *RedditItem) *EngagementItem {
-	eng_item := &EngagementItem{
-		Username: user.Username,
-		Source:   REDDIT_SOURCE,
-		Id:       item.Name,
+func newEngagementItem(user *RedditUser, item *RedditItem) *ds.UserEngagementItem {
+	eng_item := &ds.UserEngagementItem{
+		Username:  user.Username,
+		Source:    REDDIT_SOURCE,
+		ContentId: item.Name,
 	}
 	switch item.Kind {
 	case SUBREDDIT:
@@ -234,17 +234,4 @@ func newEngagementItem(user *RedditUser, item *RedditItem) *EngagementItem {
 		}
 	}
 	return nil
-}
-
-func safeSlice[T any](array []T, start, end int) []T {
-	if array == nil {
-		return array
-	}
-	if end < 0 || end > len(array) {
-		end = len(array)
-	}
-	if start > len(array) {
-		start = len(array)
-	}
-	return array[start:end]
 }
