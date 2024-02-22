@@ -3,42 +3,36 @@ package api
 import (
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 
+	"github.com/PuerkitoBio/goquery"
+	datautils "github.com/soumitsalman/data-utils"
 	ds "github.com/soumitsalman/media-content-service/api"
 )
 
 const (
-	MIN_SUBSCRIBER_LIMIT = 1000
+	MIN_SUBSCRIBER_LIMIT = 10000
 	MAX_POST_LIMIT       = 10
-	// MAX_CHILDREN_LIMIT   = 5
-	MAX_DIGEST_LENGTH = 6144 * 4 // 6144 tokens are roughly 6144*4 characters. This is around 7.5 pages full of content
+)
 
+const (
+	MAX_SUBREDDIT_TEXT_LENGTH = 1024 * 4
+	MAX_POST_TEXT_LENGTH      = 3072 * 4
+	MAX_ARTICLE_TEXT_LENGTH   = 4096 * 4
+	MAX_COMMENT_TEXT_LENGTH   = 512 * 4
+
+	MAX_EXTRACTED_TEXT_LENGTH = 4096 * 4
+	MAX_CHILD_TEXT_LENGTH     = 512 * 4
+	MIN_TEXT_LENGTH           = 5 * 4 // anything below this text length, just ignore it
+
+	MAX_DIGEST_TEXT_LENGTH = 6144 * 4 // 6144 tokens are roughly 6144*4 characters. This is around 7.5 pages full of content
 )
 
 const (
 	REDDIT_URL    = "http://www.reddit.com"
 	REDDIT_SOURCE = "REDDIT"
 )
-
-// TODO: update with utils
-func MapToArray[TKey comparable, TValue any](list map[TKey]TValue) ([]TKey, []TValue) {
-	keys := make([]TKey, 0, len(list))
-	values := make([]TValue, 0, len(list))
-	for key, val := range list {
-		keys = append(keys, key)
-		values = append(values, val)
-	}
-	return keys, values
-}
-
-// TODO: update with utils
-func AppendMaps[TKey comparable, TValue any](to_map, from_map map[TKey]TValue) map[TKey]TValue {
-	for key, val := range from_map {
-		to_map[key] = val
-	}
-	return to_map
-}
 
 // func CollectItems(user *RedditUser) ([]*ds.MediaContentItem, []*ds.UserEngagementItem) {
 // func (client *RedditClient) CollectItems() {
@@ -61,7 +55,10 @@ func (client *RedditClient) CollectItems() ([]*ds.MediaContentItem, []*ds.UserEn
 		//check cache
 		if _, ok := user_contents[reddit_item.Name]; !ok {
 			ds_item, eng_item, children := collectRedditItem(client, reddit_item, collect_similar)
-			user_contents[reddit_item.Name] = ds_item
+			// if we can't build a digest then we will not send it
+			if len(ds_item.Digest) >= MIN_TEXT_LENGTH {
+				user_contents[reddit_item.Name] = ds_item
+			}
 			if eng_item != nil {
 				user_engagements[reddit_item.Name] = eng_item
 			}
@@ -88,8 +85,8 @@ func (client *RedditClient) CollectItems() ([]*ds.MediaContentItem, []*ds.UserEn
 		}
 	}
 
-	_, contents := MapToArray[string, *ds.MediaContentItem](user_contents)
-	_, engagements := MapToArray[string, *ds.UserEngagementItem](user_engagements)
+	_, contents := datautils.MapToArray[string, *ds.MediaContentItem](user_contents)
+	_, engagements := datautils.MapToArray[string, *ds.UserEngagementItem](user_engagements)
 
 	log.Printf("Finished collection for u/%s | %d contents, %d engagements\n", client.User.Username, len(contents), len(engagements))
 
@@ -132,9 +129,9 @@ func collectRedditItem(client *RedditClient, item *RedditItem, collect_similar b
 func NewCollectorClient(user *RedditUser) *RedditClient {
 	// an auth token already exists
 	if user.AuthToken != "" {
-		return NewAuthenticatedRedditClient(user.AuthToken)
+		return NewAuthenticatedRedditClient(getUserAgent(), user.AuthToken)
 	} else {
-		client, _ := NewRedditClient(getAppId(), getAppSecret(), user.Username, user.Password)
+		client, _ := NewRedditClient(getUserAgent(), getAppId(), getAppSecret(), user.Username, user.Password)
 		return client
 	}
 }
@@ -182,10 +179,26 @@ func newContentItem(item *RedditItem, children []RedditItem) *ds.MediaContentIte
 
 	digest := func() string {
 		var builder strings.Builder
-		builder.WriteString(fmt.Sprintf("%s: %s\n\n", item.Kind, item.ExtractedText))
+		var body_text string
+
+		switch item.Kind {
+		// for subreddits the description doesnt matter as much as the top posts
+		case SUBREDDIT:
+			body_text = fmt.Sprintf("%s: %s\n\nPOSTS in this subreddit:\n", item.Kind, item.DisplayNamePrefixed)
+		// if it is a post or a comment, add a part of the body
+		case POST:
+			body_text = fmt.Sprintf("%s: %s\n\nCOMMENTS to this post:\n", item.Kind, datautils.TruncateTextWithEllipsis(item.extractText(), MAX_POST_TEXT_LENGTH))
+		case COMMENT:
+			body_text = fmt.Sprintf("%s: %s\n\nCOMMENTS to this comment:\n", item.Kind, datautils.TruncateTextWithEllipsis(item.extractText(), MAX_COMMENT_TEXT_LENGTH))
+		}
+
+		builder.WriteString(body_text)
 		for _, child := range children {
-			builder.WriteString(fmt.Sprintf("%s: %s\n\n", child.Kind, child.ExtractedText))
-			if builder.Len() >= MAX_DIGEST_LENGTH {
+			child_text := datautils.TruncateTextWithEllipsis(child.extractText(), MAX_CHILD_TEXT_LENGTH)
+			if len(child_text) >= MIN_TEXT_LENGTH {
+				builder.WriteString(fmt.Sprintf("%s: %s\n\n", child.Kind, child_text))
+			}
+			if builder.Len() >= MAX_DIGEST_TEXT_LENGTH {
 				// it will overflow a bit but thats okay since embeddings does its own truncation
 				break
 			}
@@ -201,7 +214,7 @@ func newContentItem(item *RedditItem, children []RedditItem) *ds.MediaContentIte
 		Kind:          kind(),
 		Name:          item.DisplayName,
 		ChannelName:   channel(),
-		Text:          item.ExtractedText,
+		Text:          item.extractText(),
 		Category:      category(),
 		Url:           url(), // appending www.reddit.com
 		Author:        item.Author,
@@ -234,4 +247,75 @@ func newEngagementItem(user *RedditUser, item *RedditItem) *ds.UserEngagementIte
 		}
 	}
 	return nil
+}
+
+var url_collector = NewUrlCollector([]string{
+	"https://v.redd.it", "https://i.redd.it", "https://www.reddit.com/gallery",
+	"https://www.youtube.com",
+	".png", ".jpeg", ".jpg", ".gif", ".webp",
+	".mp4", ".avi", ".mkv", ".mp3", ".wav",
+	".pdf",
+})
+
+func (item *RedditItem) extractText() string {
+	if item.ExtractedText == "" {
+		var temp_text string
+		switch item.Kind {
+		case SUBREDDIT:
+			// item.ExtractedText = cleanupText(
+			// 	extractTextFromHtml(item.PublicDescriptionHtml+"\n"+item.DescriptionHtml),
+			// 	MAX_SUBREDDIT_TEXT_LENGTH)
+			temp_text = extractTextFromHtml(item.PublicDescriptionHtml + "\n" + item.DescriptionHtml)
+
+		case POST:
+			if item.PostTextHtml != "" {
+				// this is a post with contents written in reddit
+				// item.ExtractedText = cleanupText(
+				// 	extractTextFromHtml(item.PostTextHtml),
+				// 	MAX_POST_TEXT_LENGTH)
+				temp_text = extractTextFromHtml(item.PostTextHtml)
+			} else if item.Url != "" {
+				// this is link to a new article posted in reddit
+				// item.ExtractedText = cleanupText(
+				// 	url_collector.GetText(item.Url),
+				// 	MAX_ARTICLE_TEXT_LENGTH)
+				temp_text = url_collector.GetText(item.Url)
+			}
+		case COMMENT:
+			// item.ExtractedText = cleanupText(
+			// 	extractTextFromHtml(item.CommentBodyHtml),
+			// 	MAX_COMMENT_TEXT_LENGTH)
+			temp_text = extractTextFromHtml(item.CommentBodyHtml)
+		}
+		item.ExtractedText = cleanupText(temp_text, MAX_EXTRACTED_TEXT_LENGTH)
+	}
+
+	return item.ExtractedText
+}
+
+// extract text from HTML fields
+func extractTextFromHtml(content string) string {
+	//there needs to be multiple runs on the NewDocumentFromReader when '<' and '>' are represented as "&lt;' and '&gt;'
+	for count := 2; count > 0; count-- {
+		doc, _ := goquery.NewDocumentFromReader(strings.NewReader(content))
+		content = doc.Text()
+	}
+	return content
+}
+
+func cleanupText(text string, max_length int) string {
+	match_and_replace := func(text, regex_pattern, replacement string) string {
+		return regexp.MustCompile(regex_pattern).ReplaceAllString(text, replacement)
+	}
+	// replace 2+ ' ' with 1 ' '
+	// text = match_and_replace(text, "\t+", "\t") // regexp.MustCompile(`\t+`).ReplaceAllString(text, "\t")
+	// replace 2+ \t with 1 \t
+	// text = match_and_replace(text, " +", " ") // regexp.MustCompile(` +`).ReplaceAllString(text, " ")
+	// 1 or more spaces, \n, 1 or more spaces
+	text = match_and_replace(text, `\s+\n|\n\s+|\s+\n\s+`, "\n") // regexp.MustCompile(`[ ]+\n+`).ReplaceAllString(text, "\n")
+	// replace 3+ \n with \n\n
+	text = match_and_replace(text, "(\r?\n){3,}", "\n\n") // regexp.MustCompile(`(\r?\n){3,}`).ReplaceAllString(text, "\n\n")
+	// now trim the leading and trailing spaces
+	text = strings.TrimSpace(text)
+	return datautils.TruncateTextWithEllipsis(text, max_length)
 }

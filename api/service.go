@@ -2,19 +2,21 @@ package api
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/time/rate"
 )
 
 func collectHandler(ctx *gin.Context) {
-	go runCollections()
+	go startCollections()
 	ctx.JSON(http.StatusOK, gin.H{"message": "collection started"})
 }
 
-func runCollections() {
+func startCollections() {
 	for _, user := range GetRedditUsers() {
 		NewCollectorClient(&user).CollectItems()
+		time.Sleep(MAX_WAIT_TIME) // wait out for a bit to avoid rate limiting
 	}
 }
 

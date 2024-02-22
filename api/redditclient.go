@@ -5,16 +5,8 @@ import (
 
 	"fmt"
 	"log"
-	"net/http"
-	"regexp"
-	"strings"
-	"time"
 
-	"github.com/PuerkitoBio/goquery"
 	"github.com/go-resty/resty/v2"
-	"github.com/go-shiori/go-readability"
-
-	utils "github.com/soumitsalman/data-utils"
 )
 
 const REDDIT_DATA_URL = "https://oauth.reddit.com"
@@ -33,7 +25,7 @@ type listingData struct {
 // represents Subreddit, Posts, Comments
 type RedditItem struct {
 	Kind          string // Subreddit, Post or Comment. This is not directly serialized
-	ExtractedText string // this applies if PostTextHtml is empty. This contains the text extracted from URL. This is not directly serialized
+	ExtractedText string // This is the extracted text after stripping out the HTML tags and collecting contents in an URL. This is not directly serialized from Reddit but rather computed
 
 	Name                  string  `json:"name"`         // unique identifier across media source. every reddit item has one
 	DisplayName           string  `json:"display_name"` // url name for subreddits
@@ -85,17 +77,6 @@ const (
 	BEST = "best"
 )
 
-const (
-	MAX_WAIT_TIME = 60 * time.Second
-)
-
-const (
-	MAX_SUBREDDIT_TEXT_LENGTH = 1024 * 4
-	MAX_POST_TEXT_LENGTH      = 3072 * 4
-	MAX_ARTICLE_TEXT_LENGTH   = 4096 * 4
-	MAX_COMMENT_TEXT_LENGTH   = 512 * 4
-)
-
 type RedditClient struct {
 	http_client *resty.Client
 	User        *RedditUser
@@ -108,11 +89,7 @@ func (msg AuthFailureMessage) Error() string {
 }
 
 // authenticate the user and returns a retrieval client
-func NewRedditClient(app_id, app_secret, user_name, user_pw string) (*RedditClient, error) {
-	// unpw := url.Values{}
-	// unpw.Set("grant_type", "password")
-	// unpw.Set("username", user_name)
-	// unpw.Set("password", user_pw)
+func NewRedditClient(app_agent_name, app_id, app_secret, user_name, user_pw string) (*RedditClient, error) {
 	unpw := map[string]string{
 		"grant_type": "password",
 		"username":   user_name,
@@ -126,11 +103,9 @@ func NewRedditClient(app_id, app_secret, user_name, user_pw string) (*RedditClie
 
 	resty.New().R().
 		SetBasicAuth(app_id, app_secret).
-		SetHeader("User-Agent", getUserAgent()).
+		SetHeader("User-Agent", app_agent_name).
 		SetHeader("Content-Type", URL_ENCODED_BODY).
 		SetFormData(unpw).
-		// SetFormDataFromValues(unpw).
-		// SetBody(unpw.Encode()).
 		SetResult(&auth_result).
 		SetError(&auth_result).
 		Post(REDDIT_OAUTH_URL)
@@ -141,19 +116,19 @@ func NewRedditClient(app_id, app_secret, user_name, user_pw string) (*RedditClie
 	}
 
 	log.Println("Authentication Succeeded for", user_name)
-	client := NewAuthenticatedRedditClient(auth_result.AccessToken)
+	client := NewAuthenticatedRedditClient(app_agent_name, auth_result.AccessToken)
 	client.User.Username = user_name
 	return client, nil
 }
 
 // create a client from an existing auth token
-func NewAuthenticatedRedditClient(auth_token string) *RedditClient {
+func NewAuthenticatedRedditClient(app_agent_name, auth_token string) *RedditClient {
 	return &RedditClient{
 		User: &RedditUser{AuthToken: auth_token},
 		http_client: resty.New().
 			SetTimeout(MAX_WAIT_TIME).
 			SetBaseURL(REDDIT_DATA_URL).
-			SetHeader("User-Agent", getUserAgent()).
+			SetHeader("User-Agent", app_agent_name).
 			SetAuthToken(auth_token),
 	}
 }
@@ -253,114 +228,18 @@ func (listing_data *listingData) getItems(kind string) []RedditItem {
 	items := make([]RedditItem, len(listing_data.Data.Children))
 	var counter int = 0
 	for _, v := range listing_data.Data.Children {
-		item_kind := extractItemKind(v.Kind)
+		item_kind := extractKind(v.Kind)
 		// check if the item is of the kind that is expected
 		if kind == "*" || kind == item_kind {
 			items[counter] = v.Data
 			items[counter].Kind = kind
-			items[counter].ExtractedText = extractText(&items[counter])
-
 			counter += 1
 		}
 	}
 	return items[0:counter]
 }
 
-func extractText(item *RedditItem) string {
-	var result string
-	switch item.Kind {
-	case SUBREDDIT:
-		result = cleanupText(
-			extractTextFromHtml(item.PublicDescriptionHtml+"\n"+item.DescriptionHtml),
-			MAX_SUBREDDIT_TEXT_LENGTH)
-
-	case POST:
-		if item.PostTextHtml != "" {
-			// this is a post with contents written in reddit
-			result = cleanupText(
-				extractTextFromHtml(item.PostTextHtml),
-				MAX_POST_TEXT_LENGTH)
-		} else if item.Url != "" {
-			// this is link to a new article posted in reddit
-			result = cleanupText(
-				extractTextFromUrl(item.Url),
-				MAX_ARTICLE_TEXT_LENGTH)
-		}
-	case COMMENT:
-		result = cleanupText(
-			extractTextFromHtml(item.CommentBodyHtml),
-			MAX_COMMENT_TEXT_LENGTH)
-	}
-	return result
-}
-
-// extracts texts from url
-func extractTextFromUrl(url string) string {
-	// pre-emptively check urls to find the ones NOT to collect
-	skip_urls := []string{
-		"https://v.redd.it", "https://i.redd.it", "https://www.reddit.com/gallery",
-		"https://www.youtube.com",
-		".png", ".jpeg", ".jpg", ".gif", ".webp",
-		".mp4", ".avi", ".mkv",
-	}
-	compare := func(url, skip *string) bool {
-		return strings.HasPrefix(*url, *skip) || strings.HasSuffix(*url, *skip)
-	}
-	if utils.In[string](url, skip_urls, compare) {
-		return ""
-	}
-
-	// this being done to skip bot detection
-	client := &http.Client{Timeout: MAX_WAIT_TIME}
-	req, _ := http.NewRequest(http.MethodGet, url, nil)
-	req.Header.Set("User-Agent", getUserAgent())
-	req.Header.Set("Accept", "text/html")
-	// then check content-type to not parse through MIME content
-	if resp, err := client.Do(req); (err == nil) && (resp.StatusCode == http.StatusOK) && (strings.Contains(resp.Header.Get("Content-Type"), "text/html")) {
-		// log.Println("parsing url content", url)
-		article, _ := readability.FromReader(resp.Body, resp.Request.URL)
-		return article.TextContent
-	} else {
-		// TODO: disable the error messages
-		log.Println("couldn't parse url:", url, "| err:", err)
-		if resp != nil {
-			log.Println("StatusCode:", resp.StatusCode, "| Content-Type:", resp.Header.Get("Content-Type"))
-		}
-		return ""
-	}
-}
-
-// extract text from HTML fields
-func extractTextFromHtml(content string) string {
-	//there needs to be multiple runs on the NewDocumentFromReader when '<' and '>' are represented as "&lt;' and '&gt;'
-	for count := 2; count > 0; count-- {
-		doc, _ := goquery.NewDocumentFromReader(strings.NewReader(content))
-		content = doc.Text()
-	}
-	return content
-}
-
-func cleanupText(text string, max_length int) string {
-	match_and_replace := func(text, regex_pattern, replacement string) string {
-		return regexp.MustCompile(regex_pattern).ReplaceAllString(text, replacement)
-	}
-	// replace 2+ ' ' with 1 ' '
-	// text = match_and_replace(text, "\t+", "\t") // regexp.MustCompile(`\t+`).ReplaceAllString(text, "\t")
-	// replace 2+ \t with 1 \t
-	// text = match_and_replace(text, " +", " ") // regexp.MustCompile(` +`).ReplaceAllString(text, " ")
-	// 1 or more spaces, \n, 1 or more spaces
-	text = match_and_replace(text, `\s+\n|\n\s+|\s+\n\s+`, "\n") // regexp.MustCompile(`[ ]+\n+`).ReplaceAllString(text, "\n")
-	// replace 3+ \n with \n\n
-	text = match_and_replace(text, "(\r?\n){3,}", "\n\n") // regexp.MustCompile(`(\r?\n){3,}`).ReplaceAllString(text, "\n\n")
-	// now trim the leading and trailing spaces
-	text = strings.TrimSpace(text)
-	if max_length < 0 || max_length > len(text) {
-		max_length = len(text)
-	}
-	return text[:max_length]
-}
-
-func extractItemKind(kind string) string {
+func extractKind(kind string) string {
 	switch kind {
 	case "t5":
 		return SUBREDDIT

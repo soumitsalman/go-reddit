@@ -1,13 +1,17 @@
 package api
 
 import (
+	"encoding/json"
+	"fmt"
 	"log"
+	"os"
 
 	"github.com/go-resty/resty/v2"
 	ds "github.com/soumitsalman/media-content-service/api"
 )
 
 func StoreNewContents(contents []*ds.MediaContentItem) {
+	// debug_writeJsonFile(contents)
 	_, err := getMediaStoreClient().R().
 		SetHeader("Content-Type", JSON_BODY).
 		SetBody(contents).
@@ -18,6 +22,7 @@ func StoreNewContents(contents []*ds.MediaContentItem) {
 }
 
 func StoreNewEngagements(engagements []*ds.UserEngagementItem) {
+	// debug_writeJsonFile(engagements)
 	_, err := getMediaStoreClient().R().
 		SetHeader("Content-Type", JSON_BODY).
 		SetBody(engagements).
@@ -52,7 +57,11 @@ func getMediaStoreClient() *resty.Client {
 	return media_store_client
 }
 
-// func _temp_writeJsonFile(file_name string, data any) {
-// 	json_data, _ := json.Marshal(data)
-// 	os.WriteFile(file_name+".json", json_data, 0644)
-// }
+var debug_filename_counter = 0
+
+func debug_writeJsonFile(data any) {
+	debug_filename_counter += 1
+	file_name := fmt.Sprintf("%T_%d.json", data, debug_filename_counter)
+	json_data, _ := json.Marshal(data)
+	os.WriteFile(file_name, json_data, 0644)
+}

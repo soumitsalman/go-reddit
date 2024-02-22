@@ -4,11 +4,16 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"time"
 )
 
 const (
 	JSON_BODY        = "application/json"
 	URL_ENCODED_BODY = "application/x-www-form-urlencoded"
+)
+
+const (
+	MAX_WAIT_TIME = 30 * time.Second
 )
 
 func getAppName() string {
