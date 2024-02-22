@@ -230,9 +230,10 @@ func newContentItem(item *RedditItem, children []RedditItem) *ds.MediaContentIte
 
 func newEngagementItem(user *RedditUser, item *RedditItem) *ds.UserEngagementItem {
 	eng_item := &ds.UserEngagementItem{
-		Username:  user.Username,
-		Source:    REDDIT_SOURCE,
-		ContentId: item.Name,
+		Username:   user.Username,
+		UserSource: REDDIT_SOURCE,
+		Source:     REDDIT_SOURCE,
+		ContentId:  item.Name,
 	}
 	switch item.Kind {
 	case SUBREDDIT:
