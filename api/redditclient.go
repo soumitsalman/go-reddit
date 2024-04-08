@@ -5,12 +5,16 @@ import (
 
 	"fmt"
 	"log"
+	"net/url"
 
 	"github.com/go-resty/resty/v2"
 )
 
-const REDDIT_DATA_URL = "https://oauth.reddit.com"
-const REDDIT_OAUTH_URL = "https://www.reddit.com/api/v1/access_token"
+const (
+	REDDIT_OAUTH_AUTHORIZE_URL = "https://www.reddit.com/api/v1/authorize"
+	REDDIT_OAUTH_URL           = "https://www.reddit.com/api/v1/access_token"
+	REDDIT_DATA_URL            = "https://oauth.reddit.com"
+)
 
 // internal wrapper data structure to ease json marshalling and unmarshalling
 type listingData struct {
@@ -59,10 +63,13 @@ type RedditItem struct {
 	UserIsContributor bool `json:"user_is_contributor"`
 }
 
+// the json tags are there to accommodate serialization directly from reddit api
 type RedditUser struct {
-	Username  string `json:"username"`
-	Password  string `json:"password"`
-	AuthToken string `json:"auth_token"`
+	UserId       string `json:"ignore_id,omitempty"`
+	Username     string `json:"name,omitempty"`
+	Password     string `json:"ignore_password,omitempty"`
+	AccessToken  string `json:"ignore_access_token,omitempty"`
+	RefreshToken string `json:"ignore_refresh_token,omitempty"`
 }
 
 const (
@@ -82,59 +89,94 @@ type RedditClient struct {
 	User        *RedditUser
 }
 
-type AuthFailureMessage string
+// type AuthFailureMessage string
 
-func (msg AuthFailureMessage) Error() string {
-	return string(msg)
+// func (msg AuthFailureMessage) Error() string {
+// 	return string(msg)
+// }
+
+type RedditAuthenticationResult struct {
+	AccessToken    string `json:"access_token"`
+	RefreshToken   string `json:"refresh_token"`
+	FailureMessage string `json:"message"`
 }
 
-// authenticate the user and returns a retrieval client
-func NewRedditClient(app_agent_name, app_id, app_secret, user_name, user_pw string) (*RedditClient, error) {
-	unpw := map[string]string{
-		"grant_type": "password",
-		"username":   user_name,
-		"password":   user_pw,
-	}
-
-	var auth_result struct {
-		AccessToken    string `json:"access_token"`
-		FailureMessage string `json:"message"`
-	}
-
-	resty.New().R().
-		SetBasicAuth(app_id, app_secret).
-		SetHeader("User-Agent", app_agent_name).
-		SetHeader("Content-Type", URL_ENCODED_BODY).
-		SetFormData(unpw).
-		SetResult(&auth_result).
-		SetError(&auth_result).
-		Post(REDDIT_OAUTH_URL)
-
-	if auth_result.FailureMessage != "" {
-		log.Println("Authentication Failed")
-		return nil, AuthFailureMessage(auth_result.FailureMessage)
-	}
-
-	log.Println("Authentication Succeeded for", user_name)
-	client := NewAuthenticatedRedditClient(app_agent_name, auth_result.AccessToken)
-	client.User.Username = user_name
-	return client, nil
+func (res RedditAuthenticationResult) Error() string {
+	return res.FailureMessage
 }
 
-// create a client from an existing auth token
-func NewAuthenticatedRedditClient(app_agent_name, auth_token string) *RedditClient {
+func NewRedditClient(user *RedditUser) (*RedditClient, error) {
+	if user.RefreshToken != "" {
+		// log.Println("OAUTH with refresh_token")
+		auth_grant := map[string]string{
+			"grant_type":    "refresh_token",
+			"refresh_token": user.RefreshToken,
+		}
+		return authenticateRedditClient(user.UserId, auth_grant)
+	} else if user.Password != "" {
+		// log.Println("OAUTH with password")
+		auth_grant := map[string]string{
+			"grant_type": "password",
+			"username":   user.Username,
+			"password":   user.Password,
+		}
+		return authenticateRedditClient(user.UserId, auth_grant)
+	} else if user.AccessToken != "" {
+		// log.Println("OAUTH with auth_otken")
+		return NewAuthenticatedRedditClient(user), nil
+	} else {
+		return nil, &RedditAuthenticationResult{FailureMessage: "Insufficient Input Parameters. Needs either RefreshToken, Username+Password or existing AuthToken."}
+	}
+}
+
+func NewOauthRedditClient(user_id, code string) (*RedditClient, error) {
+	auth_grant := map[string]string{
+		"grant_type":   "authorization_code",
+		"code":         code,
+		"redirect_uri": GetOauthRedirectUri(),
+	}
+	return authenticateRedditClient(user_id, auth_grant)
+}
+
+func NewAuthenticatedRedditClient(user *RedditUser) *RedditClient {
 	return &RedditClient{
-		User: &RedditUser{AuthToken: auth_token},
+		User: user,
 		http_client: resty.New().
 			SetTimeout(MAX_WAIT_TIME).
 			SetBaseURL(REDDIT_DATA_URL).
-			SetHeader("User-Agent", app_agent_name).
-			SetAuthToken(auth_token),
+			SetHeader("User-Agent", getUserAgent()).
+			SetAuthToken(user.AccessToken),
 	}
 }
 
-func (client *RedditClient) Me() (RedditItem, error) {
-	var me_data RedditItem
+func authenticateRedditClient(user_id string, auth_grant map[string]string) (*RedditClient, error) {
+	var oauth_result RedditAuthenticationResult
+	resty.New().R().
+		SetBasicAuth(GetAppId(), GetAppSecret()).
+		SetHeader("User-Agent", GetAppName()).
+		SetHeader("Content-Type", URL_ENCODED_BODY).
+		SetFormData(auth_grant).
+		SetResult(&oauth_result).
+		SetError(&oauth_result).
+		Post(REDDIT_OAUTH_URL)
+
+	if oauth_result.FailureMessage != "" {
+		log.Println("Authentication Failed")
+		return nil, &oauth_result
+	}
+
+	log.Println("Authentication Succeeded for", user_id)
+	client := NewAuthenticatedRedditClient(&RedditUser{UserId: user_id, AccessToken: oauth_result.AccessToken, RefreshToken: oauth_result.RefreshToken})
+
+	// add username
+	if me_data, err := client.Me(); err == nil {
+		client.User.Username = me_data.Username
+	}
+	return client, nil
+}
+
+func (client *RedditClient) Me() (RedditUser, error) {
+	var me_data RedditUser
 	if _, err := client.http_client.R().
 		SetResult(&me_data).
 		Get("/api/v1/me"); err != nil {
@@ -220,6 +262,18 @@ func (client *RedditClient) RetrieveComments(post *RedditItem) ([]RedditItem, er
 		collection = append(collection, listing.getItems(COMMENT)...)
 	}
 	return collection, nil
+}
+
+func GetRedditAuthorizationUrl(user_id string) string {
+	params := url.Values{}
+	params.Add("client_id", GetAppId())
+	params.Add("response_type", "code")
+	params.Add("state", user_id)
+	params.Add("redirect_uri", GetOauthRedirectUri())
+	params.Add("duration", "permanent")
+	params.Add("scope", "identity edit read")
+
+	return fmt.Sprintf("%s?%s", REDDIT_OAUTH_AUTHORIZE_URL, params.Encode())
 }
 
 // internal utility functions

@@ -16,47 +16,35 @@ const (
 	MAX_WAIT_TIME = 30 * time.Second
 )
 
-func getAppName() string {
-	return os.Getenv("REDDIT_APP_NAME")
+func GetAppName() string {
+	return os.Getenv("REDDITOR_APP_NAME")
 }
 
-func getAppDescription() string {
-	return os.Getenv("REDDIT_APP_DESCRIPTION")
+func GetOauthRedirectUri() string {
+	return os.Getenv("REDDITOR_HOST") + "/reddit/oauth_redirect"
 }
 
-func getAboutUrl() string {
-	return os.Getenv("REDDIT_ABOUT_URL")
+func GetAppId() string {
+	return os.Getenv("REDDITOR_APP_ID")
 }
 
-func getRedirectUri() string {
-	return os.Getenv("REDDIT_REDIRECT_URI")
+func GetAppSecret() string {
+	return os.Getenv("REDDITOR_APP_SECRET")
 }
 
-func getAppId() string {
-	return os.Getenv("REDDIT_APP_ID")
+func getMasterUserName() string {
+	return os.Getenv("REDDITOR_MASTER_USER_NAME")
 }
 
-func getAppSecret() string {
-	return os.Getenv("REDDIT_APP_SECRET")
+func getMasterUserPw() string {
+	return os.Getenv("REDDITOR_MASTER_USER_PW")
 }
 
 func getUserAgent() string {
 	//Windows:My Reddit Bot:1.0 (by u/botdeveloper)
-	return fmt.Sprintf("%v:%v:v0.1 (by u/randomizer_000)", runtime.GOOS, getAppName())
+	return fmt.Sprintf("%v:%s:v0.1 (by u/%s)", runtime.GOOS, getMasterUserName(), GetAppName())
 }
 
-// func getLocalUserName() string {
-// 	return os.Getenv("_REDDIT_LOCAL_USER_NAME")
-// }
-
-// func getLocalUserPw() string {
-// 	return os.Getenv("_REDDIT_LOCAL_USER_PW")
-// }
-
-func getInternalAuthToken() string {
-	return os.Getenv("INTERNAL_AUTH_TOKEN")
-}
-
-func getMediaStoreUrl() string {
-	return os.Getenv("MEDIA_STORE_URL")
+func getBeanUrl() string {
+	return os.Getenv("BEANSACK_URL")
 }
