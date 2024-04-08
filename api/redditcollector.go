@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"log"
 	"regexp"
 	"strings"
@@ -35,67 +36,70 @@ const (
 	REDDIT_SOURCE = "REDDIT"
 )
 
-// func CollectItems(user *RedditUser) ([]*ds.MediaContentItem, []*ds.UserEngagementItem) {
-// func (client *RedditClient) CollectItems() {
-// 	temp_contents, temp_engagements := client.collectItems_map()
-// 	_, contents := MapToArray[string, *ds.MediaContentItem](temp_contents)
-// 	_, engagements := MapToArray[string, *ds.UserEngagementItem](temp_engagements)
+const (
+	_MASTER_COLLECTOR = "__DEFAULT_MASTER_COLLECTOR__"
+	_UNKNOWN          = "__UNKNOWN__"
+)
 
-// 	StoreNewContents(contents)
-// 	StoreNewEngagements(engagements)
-// 	// return contents, engagements
-// }
-
-var users []RedditUser
+// LOGGED-IN USERS RELATED FUNCTIONS
+var authenticated_users []RedditUser
 
 func GetRedditUsers() []RedditUser {
 	// initialize with default master
-	if users == nil {
-		users = []RedditUser{
+	if authenticated_users == nil {
+		authenticated_users = []RedditUser{
 			{
-				UserId:   "__DEFAULT_MASTER_COLLECTOR__",
+				UserId:   _MASTER_COLLECTOR,
 				Username: getMasterUserName(),
 				Password: getMasterUserPw(),
 			},
 		}
 	}
-	return users
+	return authenticated_users
 }
 
 func AddRedditUser(user RedditUser) {
-	users = append(users, user)
+	authenticated_users = append(authenticated_users, user)
 }
 
-func CollectAndStore() {
+// COLLECTION RELATED FUNCTIONS
+func CollectAndStoreAll() {
 	for _, user := range GetRedditUsers() {
-		client, err := NewRedditClient(&user)
-		if err == nil {
-			beans, _ := CollectItems(client)
-			// time.Sleep(MAX_WAIT_TIME) // wait out for a bit to avoid rate limiting
-
-			StoreNewContents(beans)
-			// StoreNewEngagements(engagements)
-			log.Printf("Finished storing for u/%s\n", client.User.Username)
-		}
+		user.CollectAndStore()
+		// time.Sleep(MAX_WAIT_TIME) // wait out for a bit to avoid rate limiting
 	}
 }
 
-func CollectItems(client *RedditClient) ([]*ds.Bean, []*oldds.UserEngagementItem) {
-	if client == nil {
-		return nil, nil
+func (user *RedditUser) CollectAndStore() {
+	beans, noises, engagements := user.Collect()
+	if len(beans) > 0 {
+		StoreBeans(beans)
+		StoreMediaNoises(noises)
+		if user.UserId != _MASTER_COLLECTOR {
+			StoreNewEngagements(engagements)
+		}
+		log.Printf("Finished storing for u/%s\n", user.Username)
+	}
+}
+
+func (user *RedditUser) Collect() ([]*ds.Bean, []*ds.BeanMediaNoise, []*oldds.UserEngagementItem) {
+	client, err := NewRedditClient(user)
+	if err != nil {
+		return nil, nil, nil
 	}
 
-	var user_contents, user_engagements = make(map[string]*ds.Bean), make(map[string]*oldds.UserEngagementItem)
+	var beans, media_noises, engagements = make(map[string]*ds.Bean), make(map[string]*ds.BeanMediaNoise), make(map[string]*oldds.UserEngagementItem)
 	collect := func(reddit_item *RedditItem, collect_similar bool) []RedditItem {
 		//check cache
-		if _, ok := user_contents[reddit_item.Name]; !ok {
-			ds_item, eng_item, children := collectRedditItem(client, reddit_item, collect_similar)
+		if _, ok := beans[reddit_item.Name]; !ok {
+			bean, media_noise, eng, children := collectRedditItem(client, reddit_item, collect_similar)
 			// if we can't build a digest then we will not send it
-			if len(ds_item.Text) >= MIN_TEXT_LENGTH {
-				user_contents[reddit_item.Name] = ds_item
+			if len(bean.Text) >= MIN_TEXT_LENGTH {
+				beans[reddit_item.Name] = bean
+				media_noises[reddit_item.Name] = media_noise
 			}
-			if eng_item != nil {
-				user_engagements[reddit_item.Name] = eng_item
+			if eng != nil {
+				engagements[reddit_item.Name] = eng
 			}
 			return children
 		}
@@ -120,15 +124,17 @@ func CollectItems(client *RedditClient) ([]*ds.Bean, []*oldds.UserEngagementItem
 		}
 	}
 
-	_, contents := datautils.MapToArray[string, *ds.Bean](user_contents)
-	_, engagements := datautils.MapToArray[string, *oldds.UserEngagementItem](user_engagements)
+	_, res_beans := datautils.MapToArray[string, *ds.Bean](beans)
+	_, res_media_noises := datautils.MapToArray(media_noises)
+	_, res_engagements := datautils.MapToArray[string, *oldds.UserEngagementItem](engagements)
 
-	log.Printf("Finished collection for u/%s | %d contents, %d engagements\n", client.User.Username, len(contents), len(engagements))
-	return contents, engagements
+	log.Printf("Finished collection for u/%s | %d contents, %d engagements\n", client.User.Username, len(res_beans), len(res_engagements))
+	return res_beans, res_media_noises, res_engagements
 }
 
-func collectRedditItem(client *RedditClient, item *RedditItem, collect_similar bool) (*ds.Bean, *oldds.UserEngagementItem, []RedditItem) {
-	var content_item *ds.Bean
+func collectRedditItem(client *RedditClient, item *RedditItem, collect_similar bool) (*ds.Bean, *ds.BeanMediaNoise, *oldds.UserEngagementItem, []RedditItem) {
+	var bean = item.toBean(nil)
+	var media_noise *ds.BeanMediaNoise
 	var children []RedditItem
 	// if it is a subreddit then get the top X posts
 	switch item.Kind {
@@ -136,7 +142,8 @@ func collectRedditItem(client *RedditClient, item *RedditItem, collect_similar b
 		// load the hot posts in this subreddit
 		posts, _ := client.Posts(item, HOT)
 		// log.Println(len(posts), "HOT posts collected for", item.DisplayNamePrefixed)
-		content_item = newContentItem(item, posts) // safe_slice(children, 0, MAX_CHILDREN_LIMIT))
+		media_noise = item.toBeanMediaNoise(posts)
+
 		if collect_similar {
 			// now collect the similar subreddits as well to return as part of the RedditItems to explore
 			similar, _ := client.SimilarSubreddits(item)
@@ -149,105 +156,64 @@ func collectRedditItem(client *RedditClient, item *RedditItem, collect_similar b
 		// retrieve comments from this post
 		comments, _ := client.RetrieveComments(item)
 		// log.Println(len(comments), "comments collected for", item.Name, "in", item.SubredditPrefixed)
-		content_item = newContentItem(item, comments) // safe_slice(comments, 0, MAX_CHILDREN_LIMIT))
+		media_noise = item.toBeanMediaNoise(comments) // safe_slice(comments, 0, MAX_CHILDREN_LIMIT))
 	}
 
-	return content_item, newEngagementItem(client.User, item), children
+	return bean, media_noise, item.toUserEngagement(client.User), children
 }
 
-func newContentItem(item *RedditItem, children []RedditItem) *ds.Bean {
-	// special case arbiration functions
-	// subscribers := func() int {
-	// 	switch item.Kind {
-	// 	case SUBREDDIT:
-	// 		return item.NumSubscribers
-	// 	default:
-	// 		return item.SubredditSubscribers
-	// 	}
-	// }
-
-	category := func() []string {
-		switch item.Kind {
-		case SUBREDDIT:
-			return strings.Split(item.SubredditCategory, ",")
-		default:
-			return strings.Split(item.PostCategory, ",")
-		}
-	}
-
-	// channel := func() string {
-	// 	if item.Kind == SUBREDDIT {
-	// 		return item.DisplayNamePrefixed
-	// 	}
-	// 	return item.SubredditPrefixed
-	// }
-
-	url := func() string {
-		if item.Kind == SUBREDDIT {
-			return REDDIT_URL + item.Url
-		}
-		return REDDIT_URL + item.Link
-	}
-
-	kind := func() string {
-		if item.Kind == SUBREDDIT {
-			return "channel"
-		}
-		return item.Kind
-	}
-
-	// digest := func() string {
-	// 	var builder strings.Builder
-	// 	var body_text string
-
-	// 	switch item.Kind {
-	// 	// for subreddits the description doesnt matter as much as the top posts
-	// 	case SUBREDDIT:
-	// 		body_text = fmt.Sprintf("%s: %s\n\nPOSTS in this subreddit:\n", item.Kind, item.DisplayNamePrefixed)
-	// 	// if it is a post or a comment, add a part of the body
-	// 	case POST:
-	// 		body_text = fmt.Sprintf("%s: %s\n\nCOMMENTS to this post:\n", item.Kind, datautils.TruncateTextWithEllipsis(item.extractText(), MAX_POST_TEXT_LENGTH))
-	// 	case COMMENT:
-	// 		body_text = fmt.Sprintf("%s: %s\n\nCOMMENTS to this comment:\n", item.Kind, datautils.TruncateTextWithEllipsis(item.extractText(), MAX_COMMENT_TEXT_LENGTH))
-	// 	}
-
-	// 	builder.WriteString(body_text)
-	// 	for _, child := range children {
-	// 		child_text := datautils.TruncateTextWithEllipsis(child.extractText(), MAX_CHILD_TEXT_LENGTH)
-	// 		if len(child_text) >= MIN_TEXT_LENGTH {
-	// 			builder.WriteString(fmt.Sprintf("%s: %s\n\n", child.Kind, child_text))
-	// 		}
-	// 		if builder.Len() >= MAX_DIGEST_TEXT_LENGTH {
-	// 			// it will overflow a bit but thats okay since embeddings does its own truncation
-	// 			break
-	// 		}
-	// 	}
-	// 	return builder.String()
-	// }
-
+// DATA FORMAT TRANSFORMERS
+func (item *RedditItem) toBean(children []RedditItem) *ds.Bean {
 	// create the top level instance for item
 	return &ds.Bean{
-		Source: REDDIT_SOURCE,
-		// Id:            item.Name,
-		Title: item.Title,
-		Kind:  kind(),
-		// Name:          item.DisplayName,
-		// ChannelName:   channel(),
-		Text:     item.extractText(),
-		Keywords: category(),
-		Url:      url(), // appending www.reddit.com
+		Url:      item.contentUrl(),
+		Source:   REDDIT_SOURCE,
+		Title:    item.Title,
+		Kind:     item.kind(),
+		Text:     item.extractedText(),
 		Author:   item.Author,
-		// Created:       item.CreatedDate,
-		// Score:         item.Score,
-		// Comments:      item.NumComments,
-		// Subscribers:   subscribers(),
-		// ThumbsupCount: item.Ups,
-		// ThumbsupRatio: item.UpvoteRatio,
-		// Digest:        digest(),
+		Created:  int64(item.CreatedDate),
+		Keywords: item.category(),
 	}
 }
 
-func newEngagementItem(user *RedditUser, item *RedditItem) *oldds.UserEngagementItem {
+func (item *RedditItem) toBeanMediaNoise(children []RedditItem) *ds.BeanMediaNoise {
+	// special case arbiration functions
+	subscribers := func() int {
+		switch item.Kind {
+		case SUBREDDIT:
+			return item.NumSubscribers
+		default:
+			return item.SubredditSubscribers
+		}
+	}
+
+	channel := func() string {
+		if item.Kind == SUBREDDIT {
+			return item.DisplayNamePrefixed
+		}
+		return item.SubredditPrefixed
+	}
+
+	// create the top level instance for item
+	return &ds.BeanMediaNoise{
+		BeanUrl:       item.contentUrl(),
+		Media:         REDDIT_SOURCE,
+		ContentId:     item.Name,
+		Name:          item.DisplayNamePrefixed,
+		MediaChannel:  channel(),
+		MediaUrl:      item.containerUrl(),
+		Author:        item.Author,
+		Score:         item.Score,
+		Comments:      item.NumComments,
+		Subscribers:   subscribers(),
+		ThumbsupCount: item.Ups,
+		ThumbsupRatio: item.UpvoteRatio,
+		// Digest:        item.childrenDigest(children),
+	}
+}
+
+func (item *RedditItem) toUserEngagement(user *RedditUser) *oldds.UserEngagementItem {
 	eng_item := &oldds.UserEngagementItem{
 		Username:   user.Username,
 		UserSource: REDDIT_SOURCE,
@@ -269,9 +235,96 @@ func newEngagementItem(user *RedditUser, item *RedditItem) *oldds.UserEngagement
 	return nil
 }
 
+// FIELD EXTRACTION FUNCTIONS
+func (item *RedditItem) category() []string {
+	var res string
+	switch item.Kind {
+	case SUBREDDIT:
+		res = strings.TrimSpace(item.SubredditCategory)
+	default:
+		res = strings.TrimSpace(item.PostCategory)
+	}
+
+	if len(res) > 0 {
+		return []string{res}
+	} else {
+		return nil
+	}
+}
+
+func (item *RedditItem) contentUrl() string {
+	switch item.kind() {
+	case ds.ARTICLE:
+		return item.Url
+	case ds.CHANNEL:
+		return REDDIT_URL + item.Url
+	default:
+		return REDDIT_URL + item.Link
+	}
+}
+
+func (item *RedditItem) containerUrl() string {
+	switch item.kind() {
+	case ds.ARTICLE:
+		return REDDIT_URL + item.Link
+	case ds.CHANNEL:
+		return REDDIT_URL + item.Url
+	default:
+		return REDDIT_URL + item.Link
+	}
+}
+
+func (item *RedditItem) kind() string {
+	switch item.Kind {
+	case SUBREDDIT:
+		return ds.CHANNEL
+	case POST:
+		if item.PostTextHtml != "" {
+			return ds.POST
+		} else if item.Url != "" {
+			return ds.ARTICLE
+		} else {
+			return _UNKNOWN
+		}
+	case COMMENT:
+		return ds.COMMENT
+	default:
+		return _UNKNOWN
+	}
+}
+
+func (item *RedditItem) digest(children []RedditItem) string {
+	var builder strings.Builder
+	var body_text string
+
+	switch item.kind() {
+	// for subreddits the description doesnt matter as much as the top posts
+	case SUBREDDIT:
+		body_text = fmt.Sprintf("%s: %s\n\nPOSTS in this subreddit:\n", item.Kind, item.DisplayNamePrefixed)
+	// if it is a post or a comment, add a part of the body
+	case POST:
+		body_text = fmt.Sprintf("%s: %s\n\nCOMMENTS to this post:\n", item.Kind, datautils.TruncateTextWithEllipsis(item.extractedText(), MAX_POST_TEXT_LENGTH))
+	case COMMENT:
+		body_text = fmt.Sprintf("%s: %s\n\nCOMMENTS to this comment:\n", item.Kind, datautils.TruncateTextWithEllipsis(item.extractedText(), MAX_COMMENT_TEXT_LENGTH))
+	}
+
+	builder.WriteString(body_text)
+	for _, child := range children {
+		child_text := datautils.TruncateTextWithEllipsis(child.extractedText(), MAX_CHILD_TEXT_LENGTH)
+		if len(child_text) >= MIN_TEXT_LENGTH {
+			builder.WriteString(fmt.Sprintf("%s: %s\n\n", child.Kind, child_text))
+		}
+		if builder.Len() >= MAX_DIGEST_TEXT_LENGTH {
+			// it will overflow a bit but thats okay since embeddings does its own truncation
+			break
+		}
+	}
+	return builder.String()
+}
+
 var url_collector = dl.NewRedditLinkLoader()
 
-func (item *RedditItem) extractText() string {
+func (item *RedditItem) extractedText() string {
 	if item.ExtractedText == "" {
 		var temp_text string
 		switch item.Kind {

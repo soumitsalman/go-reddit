@@ -19,7 +19,7 @@ type appAuthorizationParams struct {
 }
 
 func collectHandler(ctx *gin.Context) {
-	go api.CollectAndStore()
+	go api.CollectAndStoreAll()
 	ctx.String(http.StatusOK, "collection started")
 }
 
