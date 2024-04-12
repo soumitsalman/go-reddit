@@ -1,4 +1,4 @@
-package api
+package sdk
 
 import (
 	"fmt"
@@ -31,6 +31,30 @@ const (
 	MAX_DIGEST_TEXT_LENGTH = 6144 * 4 // 6144 tokens are roughly 6144*4 characters. This is around 7.5 pages full of content
 )
 
+// initialize with default
+var config RedditCollectorConfig
+var beansack_client *BeansackClient
+
+func Initialize(collector_config RedditCollectorConfig) {
+	config = collector_config
+	beansack_client = NewBeansackClient(config.BeansackConfig)
+	AddRedditUser(RedditUser{
+		UserId:   _MASTER_COLLECTOR,
+		Username: config.MasterCollectorUsername,
+		Password: config.MasterCollectorPassword,
+	})
+}
+
+func CheckAuthenticationStatus(userid string) (bool, string) {
+	user := GetRedditUser(userid)
+	if user != nil {
+		if client, err := NewRedditClient(user, config.RedditClientConfig); err == nil {
+			return true, client.User.AccessToken
+		}
+	}
+	return false, GetRedditAuthorizationUrl(userid, config.RedditClientConfig)
+}
+
 // COLLECTION RELATED FUNCTIONS
 func CollectAndStoreAll() {
 	for _, user := range GetRedditUsers() {
@@ -42,16 +66,16 @@ func CollectAndStoreAll() {
 func (user *RedditUser) CollectAndStore() {
 	beans, engagements := user.Collect()
 	if len(beans) > 0 {
-		StoreBeans(beans)
+		beansack_client.StoreBeans(beans)
 		if user.UserId != _MASTER_COLLECTOR {
-			StoreNewEngagements(engagements)
+			beansack_client.StoreNewEngagements(engagements)
 		}
 		log.Printf("Finished storing for u/%s\n", user.Username)
 	}
 }
 
 func (user *RedditUser) Collect() ([]*ds.Bean, []*oldds.UserEngagementItem) {
-	client, err := NewRedditClient(user)
+	client, err := NewRedditClient(user, config.RedditClientConfig)
 	if err != nil {
 		return nil, nil
 	}

@@ -5,16 +5,12 @@ go 1.22.1
 require (
 	github.com/PuerkitoBio/goquery v1.9.1
 	github.com/go-resty/resty/v2 v2.12.0
-	github.com/go-shiori/go-readability v0.0.0-20240204090920-819593fddc6b
 	github.com/soumitsalman/beansack v0.0.0-20240411191040-d7b4247db25c
 	github.com/soumitsalman/data-utils v0.0.0-20240411181743-1067a6fce2ca
 	github.com/soumitsalman/document-loader v0.0.0-20240313203526-22ee6a30b55a
 )
 
 require (
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.9.1 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/data/aztables v1.1.0 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/internal v1.5.1 // indirect
 	github.com/andybalholm/cascadia v1.3.2 // indirect
 	github.com/antchfx/htmlquery v1.3.1 // indirect
 	github.com/antchfx/xmlquery v1.4.0 // indirect
@@ -30,6 +26,7 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.19.0 // indirect
 	github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c // indirect
+	github.com/go-shiori/go-readability v0.0.0-20240204090920-819593fddc6b // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/gocolly/colly/v2 v2.1.0 // indirect

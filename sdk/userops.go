@@ -1,4 +1,4 @@
-package api
+package sdk
 
 import (
 	datautils "github.com/soumitsalman/data-utils"
@@ -14,19 +14,9 @@ const (
 )
 
 // LOGGED-IN USERS RELATED FUNCTIONS
-var authenticated_users []RedditUser
+var authenticated_users []RedditUser = make([]RedditUser, 0, 100)
 
 func GetRedditUsers() []RedditUser {
-	// initialize with default master
-	if authenticated_users == nil {
-		authenticated_users = []RedditUser{
-			{
-				UserId:   _MASTER_COLLECTOR,
-				Username: getMasterUserName(),
-				Password: getMasterUserPw(),
-			},
-		}
-	}
 	return authenticated_users
 }
 
@@ -40,14 +30,4 @@ func GetRedditUser(userid string) *RedditUser {
 		return &authenticated_users[index]
 	}
 	return nil
-}
-
-func CheckAuthenticationStatus(userid string) (bool, string) {
-	user := GetRedditUser(userid)
-	if user != nil {
-		if client, err := NewRedditClient(user); err == nil {
-			return true, client.User.AccessToken
-		}
-	}
-	return false, GetRedditAuthorizationUrl(userid)
 }

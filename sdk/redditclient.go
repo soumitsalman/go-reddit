@@ -1,4 +1,4 @@
-package api
+package sdk
 
 import (
 	// "log"
@@ -14,10 +14,6 @@ const (
 	REDDIT_OAUTH_AUTHORIZE_URL = "https://www.reddit.com/api/v1/authorize"
 	REDDIT_OAUTH_URL           = "https://www.reddit.com/api/v1/access_token"
 	REDDIT_DATA_URL            = "https://oauth.reddit.com"
-)
-
-const (
-	_SCOPE = "identity read mysubreddits"
 )
 
 // internal wrapper data structure to ease json marshalling and unmarshalling
@@ -91,13 +87,8 @@ const (
 type RedditClient struct {
 	http_client *resty.Client
 	User        *RedditUser
+	config      RedditClientConfig
 }
-
-// type AuthFailureMessage string
-
-// func (msg AuthFailureMessage) Error() string {
-// 	return string(msg)
-// }
 
 type RedditAuthenticationResult struct {
 	AccessToken    string `json:"access_token"`
@@ -109,56 +100,57 @@ func (res RedditAuthenticationResult) Error() string {
 	return res.FailureMessage
 }
 
-func NewRedditClient(user *RedditUser) (*RedditClient, error) {
+func NewRedditClient(user *RedditUser, client_config RedditClientConfig) (*RedditClient, error) {
 	if user.RefreshToken != "" {
 		// log.Println("OAUTH with refresh_token")
 		auth_grant := map[string]string{
 			"grant_type":    "refresh_token",
 			"refresh_token": user.RefreshToken,
 		}
-		return authenticateRedditClient(user.UserId, auth_grant)
+		return authenticateRedditClient(user.UserId, auth_grant, client_config)
 	} else if user.Password != "" {
 		// log.Println("OAUTH with password")
 		auth_grant := map[string]string{
 			"grant_type": "password",
 			"username":   user.Username,
 			"password":   user.Password,
-			"scope":      _SCOPE,
+			"scope":      client_config.Scope,
 		}
-		return authenticateRedditClient(user.UserId, auth_grant)
+		return authenticateRedditClient(user.UserId, auth_grant, client_config)
 	} else if user.AccessToken != "" {
 		// log.Println("OAUTH with auth_otken")
-		return NewAuthenticatedRedditClient(user), nil
+		return NewAuthenticatedRedditClient(user, client_config), nil
 	} else {
 		return nil, &RedditAuthenticationResult{FailureMessage: "Insufficient Input Parameters. Needs either RefreshToken, Username+Password or existing AuthToken."}
 	}
 }
 
-func NewOauthRedditClient(user_id, code string) (*RedditClient, error) {
+func NewOauthRedditClient(user_id, code string, client_config RedditClientConfig) (*RedditClient, error) {
 	auth_grant := map[string]string{
 		"grant_type":   "authorization_code",
 		"code":         code,
-		"redirect_uri": REDDITOR_OAUTH_REDIRECT_URI,
+		"redirect_uri": client_config.RedirectUri,
 	}
-	return authenticateRedditClient(user_id, auth_grant)
+	return authenticateRedditClient(user_id, auth_grant, client_config)
 }
 
-func NewAuthenticatedRedditClient(user *RedditUser) *RedditClient {
+func NewAuthenticatedRedditClient(user *RedditUser, client_config RedditClientConfig) *RedditClient {
 	return &RedditClient{
 		User: user,
 		http_client: resty.New().
 			SetTimeout(MAX_WAIT_TIME).
 			SetBaseURL(REDDIT_DATA_URL).
-			SetHeader("User-Agent", getUserAgent()).
+			SetHeader("User-Agent", client_config.AppName).
 			SetAuthToken(user.AccessToken),
+		config: client_config,
 	}
 }
 
-func authenticateRedditClient(user_id string, auth_grant map[string]string) (*RedditClient, error) {
+func authenticateRedditClient(user_id string, auth_grant map[string]string, client_config RedditClientConfig) (*RedditClient, error) {
 	var oauth_result RedditAuthenticationResult
 	resty.New().R().
-		SetBasicAuth(GetAppId(), GetAppSecret()).
-		SetHeader("User-Agent", REDDITOR_APP_NAME).
+		SetBasicAuth(client_config.AppId, client_config.AppSecret).
+		SetHeader("User-Agent", client_config.RedirectUri).
 		SetHeader("Content-Type", URL_ENCODED_BODY).
 		SetFormData(auth_grant).
 		SetResult(&oauth_result).
@@ -171,7 +163,7 @@ func authenticateRedditClient(user_id string, auth_grant map[string]string) (*Re
 	}
 
 	log.Println("Authentication Succeeded for", user_id)
-	client := NewAuthenticatedRedditClient(&RedditUser{UserId: user_id, AccessToken: oauth_result.AccessToken, RefreshToken: oauth_result.RefreshToken})
+	client := NewAuthenticatedRedditClient(&RedditUser{UserId: user_id, AccessToken: oauth_result.AccessToken, RefreshToken: oauth_result.RefreshToken}, client_config)
 
 	// add username
 	if me_data, err := client.Me(); err == nil {
@@ -269,14 +261,14 @@ func (client *RedditClient) RetrieveComments(post *RedditItem) ([]RedditItem, er
 	return collection, nil
 }
 
-func GetRedditAuthorizationUrl(user_id string) string {
+func GetRedditAuthorizationUrl(user_id string, client_config RedditClientConfig) string {
 	params := url.Values{}
-	params.Add("client_id", GetAppId())
+	params.Add("client_id", client_config.AppId)
 	params.Add("response_type", "code")
 	params.Add("state", user_id)
-	params.Add("redirect_uri", REDDITOR_OAUTH_REDIRECT_URI)
+	params.Add("redirect_uri", client_config.RedirectUri)
 	params.Add("duration", "permanent")
-	params.Add("scope", _SCOPE)
+	params.Add("scope", client_config.Scope)
 
 	return fmt.Sprintf("%s?%s", REDDIT_OAUTH_AUTHORIZE_URL, params.Encode())
 }

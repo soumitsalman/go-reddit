@@ -2,9 +2,8 @@ package main
 
 import (
 	"fmt"
-	"os"
 
-	"github.com/soumitsalman/goreddit/api"
+	"github.com/soumitsalman/goreddit/sdk"
 
 	"net/http"
 
@@ -19,11 +18,11 @@ type appAuthorizationParams struct {
 }
 
 func collectHandler(ctx *gin.Context) {
-	go api.CollectAndStoreAll()
+	go sdk.CollectAndStoreAll()
 	ctx.String(http.StatusOK, "collection started")
 }
 
-func authenticationHandler(ctx *gin.Context) {
+func serverAuthHandler(ctx *gin.Context) {
 	// log.Println(ctx.GetHeader("X-API-Key"), getInternalAuthToken())
 	if ctx.GetHeader("X-API-Key") == getInternalAuthToken() {
 		ctx.Next()
@@ -50,20 +49,20 @@ func redditOauthRedirectHandler(ctx *gin.Context) {
 		return
 	}
 
-	client, err := api.NewOauthRedditClient(params.UserId, params.Code)
+	client, err := sdk.NewOauthRedditClient(params.UserId, params.Code, config.RedditClientConfig)
 	if err != nil {
 		ctx.String(http.StatusUnauthorized, "Some authorization issue")
 		return
 	}
 
-	api.AddRedditUser(*client.User)
+	sdk.AddRedditUser(*client.User)
 	ctx.String(http.StatusOK, "Authentication Succeeded for %s. Feel Free to Close the Window.", params.UserId)
 }
 
 func userAuthCheckHandler(ctx *gin.Context) {
 	var params appAuthorizationParams
 	if ctx.BindQuery(&params) == nil {
-		ok, res := api.CheckAuthenticationStatus(params.UserId)
+		ok, res := sdk.CheckAuthenticationStatus(params.UserId)
 		if ok {
 			ctx.String(http.StatusOK, res)
 		} else {
@@ -75,27 +74,27 @@ func userAuthCheckHandler(ctx *gin.Context) {
 }
 
 func authorizeHandler(ctx *gin.Context) {
-	userid := "__BLANK__"
+	userid := _DEFAULT_USERID
 	var params appAuthorizationParams
-	if ctx.BindQuery(&params) == nil {
+	if ctx.BindQuery(&params) == nil && params.UserId != "" {
 		userid = params.UserId
 	}
 
-	data := []byte(fmt.Sprintf("<html><body><a href=\"%s\">Sign-in with Reddit</a></body></html>", api.GetRedditAuthorizationUrl(userid)))
+	data := []byte(fmt.Sprintf("<html><body><a href=\"%s\">Sign-in with Reddit</a></body></html>", sdk.GetRedditAuthorizationUrl(userid, config.RedditClientConfig)))
 	ctx.Data(http.StatusOK, "text/html", data)
 }
 
-func getInternalAuthToken() string {
-	return os.Getenv("INTERNAL_AUTH_TOKEN")
-}
+var config sdk.RedditCollectorConfig
 
 func NewServer(r rate.Limit, b int) *gin.Engine {
+	config = getCollectorConfig()
+	sdk.Initialize(config)
 	// runCollection()
 	router := gin.Default()
 
 	auth_group := router.Group("/")
 	// authn and ratelimit middleware
-	auth_group.Use(createRateLimitHandler(r, b))
+	auth_group.Use(createRateLimitHandler(r, b), serverAuthHandler)
 	// routes
 	auth_group.POST("/reddit/collect", collectHandler)
 	auth_group.GET("/reddit/oauth-redirect", redditOauthRedirectHandler)

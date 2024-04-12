@@ -1,4 +1,4 @@
-package api
+package sdk
 
 import (
 	"encoding/json"
@@ -11,10 +11,26 @@ import (
 	oldds "github.com/soumitsalman/media-content-service/api"
 )
 
-func StoreBeans(contents []*ds.Bean) {
+type BeansackClient struct {
+	config BeansackConfig
+	client *resty.Client
+}
+
+func NewBeansackClient(beansack_config BeansackConfig) *BeansackClient {
+	return &BeansackClient{
+		config: beansack_config,
+		client: resty.New().
+			SetTimeout(MAX_WAIT_TIME).
+			SetBaseURL(beansack_config.BeanSackUrl).
+			SetHeader("User-Agent", beansack_config.UserAgent).
+			SetHeader("Content-Type", JSON_BODY).
+			SetHeader("X-API-Key", beansack_config.BeanSackAPIKey),
+	}
+}
+
+func (client *BeansackClient) StoreBeans(contents []*ds.Bean) {
 	debug_writeJsonFile(contents)
-	_, err := getMediaStoreClient().R().
-		SetHeader("Content-Type", JSON_BODY).
+	_, err := client.client.R().
 		SetBody(contents).
 		Put("/beans")
 	if err != nil {
@@ -22,7 +38,7 @@ func StoreBeans(contents []*ds.Bean) {
 	}
 }
 
-func StoreNewEngagements(engagements []*oldds.UserEngagementItem) {
+func (client *BeansackClient) StoreNewEngagements(engagements []*oldds.UserEngagementItem) {
 	// debug_writeJsonFile(engagements)
 	// _, err := getMediaStoreClient().R().
 	// 	SetHeader("Content-Type", JSON_BODY).
@@ -31,18 +47,6 @@ func StoreNewEngagements(engagements []*oldds.UserEngagementItem) {
 	// if err != nil {
 	// 	log.Println("FAILED storing new engagements", err)
 	// }
-}
-
-var media_store_client *resty.Client
-
-func getMediaStoreClient() *resty.Client {
-	if media_store_client == nil {
-		media_store_client = resty.New().
-			SetTimeout(MAX_WAIT_TIME).
-			SetBaseURL(getBeanUrl()).
-			SetHeader("User-Agent", getUserAgent())
-	}
-	return media_store_client
 }
 
 var debug_filename_counter = 0
