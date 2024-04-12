@@ -22,26 +22,15 @@ func StoreBeans(contents []*ds.Bean) {
 	}
 }
 
-func StoreMediaNoises(noises []*ds.BeanMediaNoise) {
-	debug_writeJsonFile(noises)
-	_, err := getMediaStoreClient().R().
-		SetHeader("Content-Type", JSON_BODY).
-		SetBody(noises).
-		Put("/beans/medianoise")
-	if err != nil {
-		log.Println("FAILED storing new contents", err)
-	}
-}
-
 func StoreNewEngagements(engagements []*oldds.UserEngagementItem) {
-	debug_writeJsonFile(engagements)
-	_, err := getMediaStoreClient().R().
-		SetHeader("Content-Type", JSON_BODY).
-		SetBody(engagements).
-		Post("/engagements")
-	if err != nil {
-		log.Println("FAILED storing new engagements", err)
-	}
+	// debug_writeJsonFile(engagements)
+	// _, err := getMediaStoreClient().R().
+	// 	SetHeader("Content-Type", JSON_BODY).
+	// 	SetBody(engagements).
+	// 	Post("/engagements")
+	// if err != nil {
+	// 	log.Println("FAILED storing new engagements", err)
+	// }
 }
 
 var media_store_client *resty.Client

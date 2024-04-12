@@ -58,7 +58,31 @@ func redditOauthRedirectHandler(ctx *gin.Context) {
 
 	api.AddRedditUser(*client.User)
 	ctx.String(http.StatusOK, "Authentication Succeeded for %s. Feel Free to Close the Window.", params.UserId)
+}
 
+func userAuthCheckHandler(ctx *gin.Context) {
+	var params appAuthorizationParams
+	if ctx.BindQuery(&params) == nil {
+		ok, res := api.CheckAuthenticationStatus(params.UserId)
+		if ok {
+			ctx.String(http.StatusOK, res)
+		} else {
+			ctx.String(http.StatusNotFound, res)
+		}
+		return
+	}
+	ctx.Status(http.StatusBadRequest)
+}
+
+func authorizeHandler(ctx *gin.Context) {
+	userid := "__BLANK__"
+	var params appAuthorizationParams
+	if ctx.BindQuery(&params) == nil {
+		userid = params.UserId
+	}
+
+	data := []byte(fmt.Sprintf("<html><body><a href=\"%s\">Sign-in with Reddit</a></body></html>", api.GetRedditAuthorizationUrl(userid)))
+	ctx.Data(http.StatusOK, "text/html", data)
 }
 
 func getInternalAuthToken() string {
@@ -73,13 +97,10 @@ func NewServer(r rate.Limit, b int) *gin.Engine {
 	// authn and ratelimit middleware
 	auth_group.Use(createRateLimitHandler(r, b))
 	// routes
-	auth_group.POST("/collect", collectHandler)
-	auth_group.GET("/reddit/oauth_redirect", redditOauthRedirectHandler)
-
-	auth_group.GET("/authorize", func(ctx *gin.Context) {
-		data := []byte(fmt.Sprintf("<html><body><a href=\"%s\">Sign-in with Reddit</a></body></html>", api.GetRedditAuthorizationUrl("XXX")))
-		ctx.Data(http.StatusOK, "text/html", data)
-	})
+	auth_group.POST("/reddit/collect", collectHandler)
+	auth_group.GET("/reddit/oauth-redirect", redditOauthRedirectHandler)
+	auth_group.GET("/reddit/auth-status", userAuthCheckHandler)
+	auth_group.GET("/reddit/authorize", authorizeHandler)
 
 	return router
 }

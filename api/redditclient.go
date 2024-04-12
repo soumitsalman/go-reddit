@@ -16,6 +16,10 @@ const (
 	REDDIT_DATA_URL            = "https://oauth.reddit.com"
 )
 
+const (
+	_SCOPE = "identity read mysubreddits"
+)
+
 // internal wrapper data structure to ease json marshalling and unmarshalling
 type listingData struct {
 	Data struct {
@@ -119,6 +123,7 @@ func NewRedditClient(user *RedditUser) (*RedditClient, error) {
 			"grant_type": "password",
 			"username":   user.Username,
 			"password":   user.Password,
+			"scope":      _SCOPE,
 		}
 		return authenticateRedditClient(user.UserId, auth_grant)
 	} else if user.AccessToken != "" {
@@ -133,7 +138,7 @@ func NewOauthRedditClient(user_id, code string) (*RedditClient, error) {
 	auth_grant := map[string]string{
 		"grant_type":   "authorization_code",
 		"code":         code,
-		"redirect_uri": GetOauthRedirectUri(),
+		"redirect_uri": REDDITOR_OAUTH_REDIRECT_URI,
 	}
 	return authenticateRedditClient(user_id, auth_grant)
 }
@@ -153,7 +158,7 @@ func authenticateRedditClient(user_id string, auth_grant map[string]string) (*Re
 	var oauth_result RedditAuthenticationResult
 	resty.New().R().
 		SetBasicAuth(GetAppId(), GetAppSecret()).
-		SetHeader("User-Agent", GetAppName()).
+		SetHeader("User-Agent", REDDITOR_APP_NAME).
 		SetHeader("Content-Type", URL_ENCODED_BODY).
 		SetFormData(auth_grant).
 		SetResult(&oauth_result).
@@ -269,9 +274,9 @@ func GetRedditAuthorizationUrl(user_id string) string {
 	params.Add("client_id", GetAppId())
 	params.Add("response_type", "code")
 	params.Add("state", user_id)
-	params.Add("redirect_uri", GetOauthRedirectUri())
+	params.Add("redirect_uri", REDDITOR_OAUTH_REDIRECT_URI)
 	params.Add("duration", "permanent")
-	params.Add("scope", "identity edit read")
+	params.Add("scope", _SCOPE)
 
 	return fmt.Sprintf("%s?%s", REDDIT_OAUTH_AUTHORIZE_URL, params.Encode())
 }

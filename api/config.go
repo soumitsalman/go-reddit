@@ -16,13 +16,10 @@ const (
 	MAX_WAIT_TIME = 30 * time.Second
 )
 
-func GetAppName() string {
-	return os.Getenv("REDDITOR_APP_NAME")
-}
-
-func GetOauthRedirectUri() string {
-	return os.Getenv("REDDITOR_HOST") + "/reddit/oauth_redirect"
-}
+const (
+	REDDITOR_APP_NAME           = "R3ddit0r for Espresso by Cafecit.io"
+	REDDITOR_OAUTH_REDIRECT_URI = "http://localhost:8080/reddit/oauth-redirect"
+)
 
 func GetAppId() string {
 	return os.Getenv("REDDITOR_APP_ID")
@@ -42,7 +39,7 @@ func getMasterUserPw() string {
 
 func getUserAgent() string {
 	//Windows:My Reddit Bot:1.0 (by u/botdeveloper)
-	return fmt.Sprintf("%v:%s:v0.1 (by u/%s)", runtime.GOOS, getMasterUserName(), GetAppName())
+	return fmt.Sprintf("%v:%s:v0.1", runtime.GOOS, REDDITOR_APP_NAME)
 }
 
 func getBeanUrl() string {
