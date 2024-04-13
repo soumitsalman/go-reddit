@@ -157,7 +157,7 @@ func authenticateRedditClient(user_id string, auth_grant map[string]string, clie
 		SetError(&oauth_result).
 		Post(REDDIT_OAUTH_URL)
 
-	if oauth_result.FailureMessage != "" {
+	if oauth_result.AccessToken == "" {
 		log.Println("Authentication Failed")
 		return nil, &oauth_result
 	}

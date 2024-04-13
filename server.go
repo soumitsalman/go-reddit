@@ -89,17 +89,21 @@ var config sdk.RedditCollectorConfig
 func NewServer(r rate.Limit, b int) *gin.Engine {
 	config = getCollectorConfig()
 	sdk.Initialize(config)
-	// runCollection()
+
 	router := gin.Default()
 
-	auth_group := router.Group("/")
-	// authn and ratelimit middleware
+	// Does not need auth since they should be publicly accessible
+	noauth_group := router.Group("/reddit")
+	noauth_group.Use(createRateLimitHandler(r, b))
+	noauth_group.GET("/authorize", redditAuthorizeHandler)
+	noauth_group.GET("/oauth-redirect", redditOauthRedirectHandler)
+
+	// NEEDS SERVICES TO SERVICE AUTH
+	auth_group := router.Group("/reddit")
 	auth_group.Use(createRateLimitHandler(r, b), serverAuthenticationHandler)
-	// routes
-	auth_group.POST("/reddit/collect", collectHandler)
-	auth_group.GET("/reddit/oauth-redirect", redditOauthRedirectHandler)
-	auth_group.GET("/reddit/auth-status", userAuthCheckHandler)
-	auth_group.GET("/reddit/authorize", redditAuthorizeHandler)
+
+	auth_group.POST("/collect", collectHandler)
+	auth_group.GET("/auth-status", userAuthCheckHandler)
 
 	return router
 }
