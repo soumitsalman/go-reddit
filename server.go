@@ -22,7 +22,7 @@ func collectHandler(ctx *gin.Context) {
 	ctx.String(http.StatusOK, "collection started")
 }
 
-func serverAuthHandler(ctx *gin.Context) {
+func serverAuthenticationHandler(ctx *gin.Context) {
 	// log.Println(ctx.GetHeader("X-API-Key"), getInternalAuthToken())
 	if ctx.GetHeader("X-API-Key") == getInternalAuthToken() {
 		ctx.Next()
@@ -62,7 +62,7 @@ func redditOauthRedirectHandler(ctx *gin.Context) {
 func userAuthCheckHandler(ctx *gin.Context) {
 	var params appAuthorizationParams
 	if ctx.BindQuery(&params) == nil {
-		ok, res := sdk.CheckAuthenticationStatus(params.UserId)
+		ok, res := sdk.IsUserAuthenticated(params.UserId)
 		if ok {
 			ctx.String(http.StatusOK, res)
 		} else {
@@ -73,7 +73,7 @@ func userAuthCheckHandler(ctx *gin.Context) {
 	ctx.Status(http.StatusBadRequest)
 }
 
-func authorizeHandler(ctx *gin.Context) {
+func redditAuthorizeHandler(ctx *gin.Context) {
 	userid := _DEFAULT_USERID
 	var params appAuthorizationParams
 	if ctx.BindQuery(&params) == nil && params.UserId != "" {
@@ -94,12 +94,12 @@ func NewServer(r rate.Limit, b int) *gin.Engine {
 
 	auth_group := router.Group("/")
 	// authn and ratelimit middleware
-	auth_group.Use(createRateLimitHandler(r, b), serverAuthHandler)
+	auth_group.Use(createRateLimitHandler(r, b), serverAuthenticationHandler)
 	// routes
 	auth_group.POST("/reddit/collect", collectHandler)
 	auth_group.GET("/reddit/oauth-redirect", redditOauthRedirectHandler)
 	auth_group.GET("/reddit/auth-status", userAuthCheckHandler)
-	auth_group.GET("/reddit/authorize", authorizeHandler)
+	auth_group.GET("/reddit/authorize", redditAuthorizeHandler)
 
 	return router
 }

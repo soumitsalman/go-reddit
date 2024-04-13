@@ -33,7 +33,3 @@ type RedditCollectorConfig struct {
 	RedditClientConfig
 	BeansackConfig
 }
-
-// func (config *RedditClientConfig) GetUserAgent() string {
-// 	return fmt.Sprintf("%v:%s:v0.1", runtime.GOOS, config.AppName)
-// }

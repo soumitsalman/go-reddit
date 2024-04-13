@@ -45,12 +45,14 @@ func Initialize(collector_config RedditCollectorConfig) {
 	})
 }
 
-func CheckAuthenticationStatus(userid string) (bool, string) {
+func IsUserAuthenticated(userid string) (bool, string) {
 	user := GetRedditUser(userid)
 	if user != nil {
-		if client, err := NewRedditClient(user, config.RedditClientConfig); err == nil {
-			return true, client.User.AccessToken
-		}
+		return true, ""
+		// NO NEED TO REAUTH YET
+		// if _, err := NewRedditClient(user, config.RedditClientConfig); err == nil {
+		// 	return true, ""
+		// }
 	}
 	return false, GetRedditAuthorizationUrl(userid, config.RedditClientConfig)
 }

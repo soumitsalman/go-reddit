@@ -6,7 +6,7 @@ WORKDIR /app
 
 # these are environmental constant rather than secrets
 ENV REDDITOR_APP_NAME "R3ddit0r for Espresso by Cafecit.io"
-ENV REDDITOR_OAUTH_REDIRECT_URI "http://localhost:8080/reddit/oauth-redirect"
+ENV REDDITOR_OAUTH_REDIRECT_URI "https://redditcollector.orangeflower-f8e1f6b0.eastus.azurecontainerapps.io/reddit/oauth-redirect"
 ENV BEANSACK_URL "https://beansackservice.purplesea-08c513a7.eastus.azurecontainerapps.io"
 
 # technically you dont need to copy all the files. ONLY the stuff needed run your go application
