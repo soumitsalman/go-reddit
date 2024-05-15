@@ -10,7 +10,8 @@ const (
 )
 
 const (
-	MAX_WAIT_TIME = 30 * time.Second
+	// changing wait time since it takes while to publish all the messages
+	MAX_WAIT_TIME = 10 * time.Minute
 )
 
 type RedditClientConfig struct {

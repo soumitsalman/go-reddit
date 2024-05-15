@@ -22,7 +22,7 @@ func NewBeansackClient(beansack_config BeansackConfig) *BeansackClient {
 	return &BeansackClient{
 		config: beansack_config,
 		client: resty.New().
-			// SetTimeout(MAX_WAIT_TIME).
+			SetTimeout(MAX_WAIT_TIME).
 			SetBaseURL(beansack_config.BeanSackUrl).
 			SetHeader("User-Agent", beansack_config.UserAgent).
 			SetHeader("Content-Type", JSON_BODY).
@@ -43,7 +43,7 @@ func (client *BeansackClient) StoreBeans(contents []*ds.Bean) {
 			}
 			return err
 		},
-		retry.Attempts(5),
+		retry.Attempts(3),
 		retry.Delay(time.Second),
 	)
 }
