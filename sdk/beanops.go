@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
+	"github.com/avast/retry-go"
 	"github.com/go-resty/resty/v2"
 	ds "github.com/soumitsalman/beansack/sdk"
 	oldds "github.com/soumitsalman/media-content-service/api"
@@ -20,7 +22,7 @@ func NewBeansackClient(beansack_config BeansackConfig) *BeansackClient {
 	return &BeansackClient{
 		config: beansack_config,
 		client: resty.New().
-			SetTimeout(MAX_WAIT_TIME).
+			// SetTimeout(MAX_WAIT_TIME).
 			SetBaseURL(beansack_config.BeanSackUrl).
 			SetHeader("User-Agent", beansack_config.UserAgent).
 			SetHeader("Content-Type", JSON_BODY).
@@ -30,12 +32,20 @@ func NewBeansackClient(beansack_config BeansackConfig) *BeansackClient {
 
 func (client *BeansackClient) StoreBeans(contents []*ds.Bean) {
 	debug_writeJsonFile(contents)
-	_, err := client.client.R().
-		SetBody(contents).
-		Put("/beans")
-	if err != nil {
-		log.Println("FAILED storing new contents", err)
-	}
+	retry.Do(
+		func() error {
+			_, err := client.client.R().
+				SetBody(contents).
+				Put("/beans")
+
+			if err != nil {
+				log.Println("FAILED storing new contents", err)
+			}
+			return err
+		},
+		retry.Attempts(5),
+		retry.Delay(time.Second),
+	)
 }
 
 func (client *BeansackClient) StoreNewEngagements(engagements []*oldds.UserEngagementItem) {

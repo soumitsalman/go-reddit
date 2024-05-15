@@ -103,7 +103,8 @@ func (user *RedditUser) Collect() ([]*ds.Bean, []*oldds.UserEngagementItem) {
 
 	var subreddits, _ = client.Subreddits()
 	for _, sr := range subreddits {
-		children := collect(&sr, true)
+		// TODO: disabling collection of similar subreddits for now. enable it later
+		children := collect(&sr, false)
 		var post_remaining = MAX_POST_LIMIT
 		for _, child := range children {
 			// collect if its a HOt POST with top or if its POST
@@ -162,14 +163,14 @@ func (item *RedditItem) toBean(children []RedditItem) *ds.Bean {
 		Title:      item.Title,
 		Kind:       item.kind(),
 		Text:       item.extractedText(),
-		Author:     item.Author,
+		Author:     "u/" + item.Author,
 		Created:    int64(item.CreatedDate),
 		Keywords:   item.category(),
 		MediaNoise: item.toBeanMediaNoise(children),
 	}
 }
 
-func (item *RedditItem) toBeanMediaNoise(children []RedditItem) *ds.BeanMediaNoise {
+func (item *RedditItem) toBeanMediaNoise(children []RedditItem) *ds.MediaNoise {
 	// special case arbiration functions
 	subscribers := func() int {
 		switch item.Kind {
@@ -188,7 +189,7 @@ func (item *RedditItem) toBeanMediaNoise(children []RedditItem) *ds.BeanMediaNoi
 	}
 
 	// create the top level instance for item
-	return &ds.BeanMediaNoise{
+	return &ds.MediaNoise{
 		BeanUrl:       item.contentUrl(),
 		Source:        REDDIT_SOURCE,
 		ContentId:     item.Name,

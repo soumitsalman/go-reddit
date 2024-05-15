@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/joho/godotenv"
 	"github.com/soumitsalman/goreddit/sdk"
 
 	"net/http"
@@ -109,5 +110,6 @@ func NewServer(r rate.Limit, b int) *gin.Engine {
 }
 
 func main() {
+	godotenv.Load()
 	NewServer(2, 5).Run()
 }
