@@ -1,18 +1,19 @@
 module github.com/soumitsalman/goreddit
 
-go 1.22.1
+go 1.22.3
 
 require (
 	github.com/PuerkitoBio/goquery v1.9.2
 	github.com/go-resty/resty/v2 v2.13.1
-	github.com/soumitsalman/beansack v0.0.0-20240515174229-292b4afcae4f
+	github.com/joho/godotenv v1.5.1
+	github.com/soumitsalman/beansack v0.0.0-20240519202834-2100f3106d52
 	github.com/soumitsalman/data-utils v0.0.0-20240411181743-1067a6fce2ca
 	github.com/soumitsalman/document-loader v0.0.0-20240313203526-22ee6a30b55a
 )
 
 require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
-	github.com/Masterminds/semver/v3 v3.2.0 // indirect
+	github.com/Masterminds/semver/v3 v3.2.1 // indirect
 	github.com/Masterminds/sprig/v3 v3.2.3 // indirect
 	github.com/andybalholm/cascadia v1.3.2 // indirect
 	github.com/antchfx/htmlquery v1.3.1 // indirect
@@ -35,7 +36,7 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.20.0 // indirect
 	github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c // indirect
-	github.com/go-shiori/go-readability v0.0.0-20240204090920-819593fddc6b // indirect
+	github.com/go-shiori/go-readability v0.0.0-20240518065624-0b7c0223026a // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/gocolly/colly/v2 v2.1.0 // indirect
@@ -45,10 +46,9 @@ require (
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/goph/emperror v0.17.2 // indirect
-	github.com/huandu/xstrings v1.3.3 // indirect
-	github.com/imdario/mergo v0.3.13 // indirect
+	github.com/huandu/xstrings v1.4.0 // indirect
+	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/invopop/jsonschema v0.12.0 // indirect
-	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kennygrant/sanitize v1.2.4 // indirect
 	github.com/klauspost/compress v1.17.8 // indirect
@@ -58,8 +58,8 @@ require (
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
-	github.com/mitchellh/copystructure v1.0.0 // indirect
-	github.com/mitchellh/reflectwalk v1.0.0 // indirect
+	github.com/mitchellh/copystructure v1.2.0 // indirect
+	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
@@ -71,9 +71,9 @@ require (
 	github.com/pkoukk/tiktoken-go v0.1.6 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
-	github.com/shopspring/decimal v1.2.0 // indirect
+	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
-	github.com/spf13/cast v1.3.1 // indirect
+	github.com/spf13/cast v1.6.0 // indirect
 	github.com/temoto/robotstxt v1.1.2 // indirect
 	github.com/tiktoken-go/tokenizer v0.1.1 // indirect
 	github.com/tmc/langchaingo v0.1.10 // indirect
@@ -91,10 +91,10 @@ require (
 	gitlab.com/golang-commonmark/mdurl v0.0.0-20191124015652-932350d1cb84 // indirect
 	gitlab.com/golang-commonmark/puny v0.0.0-20191124015043-9f83538fa04f // indirect
 	go.mongodb.org/mongo-driver v1.15.0 // indirect
-	go.starlark.net v0.0.0-20230302034142-4b1e35fe2254 // indirect
+	go.starlark.net v0.0.0-20240517230649-3792562d0b7f // indirect
 	golang.org/x/arch v0.8.0 // indirect
 	golang.org/x/crypto v0.23.0 // indirect
-	golang.org/x/exp v0.0.0-20230713183714-613f0c0eb8a1 // indirect
+	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
 	golang.org/x/sync v0.7.0 // indirect
 	golang.org/x/sys v0.20.0 // indirect
 	golang.org/x/text v0.15.0 // indirect
