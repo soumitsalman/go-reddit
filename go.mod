@@ -1,4 +1,4 @@
-module github.com/soumitsalman/goreddit
+module github.com/soumitsalman/go-reddit
 
 go 1.22.3
 

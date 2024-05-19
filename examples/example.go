@@ -7,7 +7,7 @@ import (
 	"time"
 
 	ds "github.com/soumitsalman/beansack/sdk"
-	sdk "github.com/soumitsalman/goreddit/collector"
+	sdk "github.com/soumitsalman/go-reddit/collector"
 )
 
 func CollectAndStoreLocally() {
