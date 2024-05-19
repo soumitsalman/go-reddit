@@ -9,8 +9,8 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	ds "github.com/soumitsalman/beansack/sdk"
 	datautils "github.com/soumitsalman/data-utils"
-	dl "github.com/soumitsalman/document-loader/loaders"
 	oldds "github.com/soumitsalman/media-content-service/api"
+	dl "github.com/soumitsalman/newscollector/loaders"
 )
 
 const (

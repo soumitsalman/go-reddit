@@ -6,9 +6,9 @@ require (
 	github.com/PuerkitoBio/goquery v1.9.2
 	github.com/go-resty/resty/v2 v2.13.1
 	github.com/joho/godotenv v1.5.1
-	github.com/soumitsalman/beansack v0.0.0-20240519202834-2100f3106d52
+	github.com/soumitsalman/beansack v0.0.1
 	github.com/soumitsalman/data-utils v0.0.0-20240411181743-1067a6fce2ca
-	github.com/soumitsalman/document-loader v0.0.0-20240313203526-22ee6a30b55a
+	github.com/soumitsalman/newscollector v0.1.1
 )
 
 require (
@@ -24,8 +24,6 @@ require (
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/bytedance/sonic v1.11.6 // indirect
 	github.com/bytedance/sonic/loader v0.1.1 // indirect
-	github.com/chenzhuoyu/base64x v0.0.0-20230717121745-296ad89f973d // indirect
-	github.com/chenzhuoyu/iasm v0.9.1 // indirect
 	github.com/cloudwego/base64x v0.1.4 // indirect
 	github.com/cloudwego/iasm v0.2.0 // indirect
 	github.com/dlclark/regexp2 v1.11.0 // indirect
@@ -47,13 +45,12 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/goph/emperror v0.17.2 // indirect
 	github.com/huandu/xstrings v1.4.0 // indirect
-	github.com/imdario/mergo v0.3.16 // indirect
+	github.com/imdario/mergo v0.3.13 // indirect
 	github.com/invopop/jsonschema v0.12.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kennygrant/sanitize v1.2.4 // indirect
 	github.com/klauspost/compress v1.17.8 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.7 // indirect
-	github.com/knz/go-libedit v1.10.1 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -104,8 +101,8 @@ require (
 )
 
 require (
-	github.com/gin-gonic/gin v1.10.0
+	github.com/gin-gonic/gin v1.10.0 // indirect
 	github.com/soumitsalman/media-content-service v0.0.0-20240222180410-3ecbd3432f4e
 	golang.org/x/net v0.25.0 // indirect
-	golang.org/x/time v0.5.0
+	golang.org/x/time v0.5.0 // indirect
 )
