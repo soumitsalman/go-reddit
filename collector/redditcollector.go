@@ -14,6 +14,15 @@ import (
 )
 
 const (
+	REDDIT_URL    = "https://www.reddit.com"
+	REDDIT_SOURCE = "REDDIT"
+)
+
+const (
+	_MASTER_COLLECTOR = "__DEFAULT_MASTER_COLLECTOR__"
+)
+
+const (
 	MIN_SUBSCRIBER_LIMIT = 10000
 	MAX_POST_LIMIT       = 10
 )
@@ -31,65 +40,58 @@ const (
 	MAX_DIGEST_TEXT_LENGTH = 6144 * 4 // 6144 tokens are roughly 6144*4 characters. This is around 7.5 pages full of content
 )
 
-// initialize with default
-var config RedditCollectorConfig
-var beansack_client *BeansackClient
-
-func Initialize(collector_config RedditCollectorConfig) {
-	config = collector_config
-	beansack_client = NewBeansackClient(config.BeansackConfig)
-	AddRedditUser(RedditUser{
-		UserId:   _MASTER_COLLECTOR,
-		Username: config.MasterCollectorUsername,
-		Password: config.MasterCollectorPassword,
-	})
+type RedditCollector struct {
+	// initialize with default
+	config CollectorConfig
+	// these are the users whose data would be collected
+	// the config already provides a master account as a seed
+	authenticated_users []RedditUser
 }
 
-func IsUserAuthenticated(userid string) (bool, string) {
-	user := GetRedditUser(userid)
-	if user != nil {
-		return true, ""
-		// NO NEED TO REAUTH YET
-		// if _, err := NewRedditClient(user, config.RedditClientConfig); err == nil {
-		// 	return true, ""
-		// }
+func NewCollector(config CollectorConfig) *RedditCollector {
+	collector := RedditCollector{
+		config:              config,
+		authenticated_users: make([]RedditUser, 0, 10), // default holder
 	}
-	return false, GetRedditAuthorizationUrl(userid, config.RedditClientConfig)
+	// if config has a master username defined add it
+	if len(config.MasterCollectorUsername) > 0 {
+		collector.AddCollectionAccount(RedditUser{
+			UserId:   _MASTER_COLLECTOR,
+			Username: config.MasterCollectorUsername,
+			Password: config.MasterCollectorPassword,
+		})
+	}
+	return &collector
 }
 
 // COLLECTION RELATED FUNCTIONS
-func CollectAndStoreAll() {
-	for _, user := range GetRedditUsers() {
-		user.CollectAndStore()
-		// time.Sleep(MAX_WAIT_TIME) // wait out for a bit to avoid rate limiting
-	}
-}
-
-func (user *RedditUser) CollectAndStore() {
-	beans, engagements := user.Collect()
-	if len(beans) > 0 {
-		beansack_client.StoreBeans(beans)
-		if user.UserId != _MASTER_COLLECTOR {
-			beansack_client.StoreNewEngagements(engagements)
+func (collector *RedditCollector) Collect() {
+	for i := range collector.authenticated_users {
+		beans, _ := collector.collectUser(&collector.authenticated_users[i])
+		if len(beans) > 0 {
+			collector.config.store_func(beans)
+			// if user.UserId != _MASTER_COLLECTOR {
+			// 	beansack_client.StoreNewEngagements(engagements)
+			// }
+			log.Printf("Finished storing for u/%s\n", collector.authenticated_users[i].Username)
 		}
-		log.Printf("Finished storing for u/%s\n", user.Username)
 	}
 }
 
-func (user *RedditUser) Collect() ([]*ds.Bean, []*oldds.UserEngagementItem) {
-	client, err := NewRedditClient(user, config.RedditClientConfig)
+func (collector *RedditCollector) collectUser(user *RedditUser) ([]ds.Bean, []*oldds.UserEngagementItem) {
+	client, err := NewRedditClient(user, collector.config.RedditClientConfig)
 	if err != nil {
 		return nil, nil
 	}
 
-	var beans, engagements = make(map[string]*ds.Bean), make(map[string]*oldds.UserEngagementItem)
+	var beans, engagements = make(map[string]ds.Bean), make(map[string]*oldds.UserEngagementItem)
 	collect := func(reddit_item *RedditItem, collect_similar bool) []RedditItem {
 		//check cache
 		if _, ok := beans[reddit_item.Name]; !ok {
 			bean, eng, children := collectRedditItem(client, reddit_item, collect_similar)
 			// if we can't build a digest then we will not send it
 			if len(bean.Text) >= MIN_TEXT_LENGTH {
-				beans[reddit_item.Name] = bean
+				beans[reddit_item.Name] = *bean
 			}
 			if eng != nil {
 				engagements[reddit_item.Name] = eng
@@ -118,7 +120,7 @@ func (user *RedditUser) Collect() ([]*ds.Bean, []*oldds.UserEngagementItem) {
 		}
 	}
 
-	_, res_beans := datautils.MapToArray[string, *ds.Bean](beans)
+	_, res_beans := datautils.MapToArray[string, ds.Bean](beans)
 	_, res_engagements := datautils.MapToArray[string, *oldds.UserEngagementItem](engagements)
 
 	log.Printf("Finished collection for u/%s | %d contents, %d engagements\n", client.User.Username, len(res_beans), len(res_engagements))
