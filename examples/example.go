@@ -16,13 +16,12 @@ func CollectAndStoreLocally() {
 }
 
 func localFileStore(contents []ds.Bean) {
-	filename := fmt.Sprintf("outputs_REDDIT_%s", time.Now().Format("2006-01-02-15-04-05.json"))
-	file, _ := os.Create(filename)
-	defer file.Close()
-	json.NewEncoder(file).Encode(contents)
-
+	data, _ := json.MarshalIndent(contents, "", "\t")
+	filename := fmt.Sprintf("test_REDDIT_%s", time.Now().Format("2006-01-02-15-04-05.json"))
+	os.WriteFile(filename, data, 0644)
 }
 
+// TODO: delete all of these
 // func redditOauthRedirectHandler(ctx *gin.Context) {
 // 	var params appAuthorizationParams
 // 	if ctx.BindQuery(&params) != nil || params.Error != "" {

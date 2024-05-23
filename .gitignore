@@ -1,4 +1,4 @@
-test_main.go
+test*
 *.env
 *.json
 
