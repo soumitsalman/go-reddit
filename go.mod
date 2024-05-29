@@ -6,9 +6,9 @@ require (
 	github.com/PuerkitoBio/goquery v1.9.2
 	github.com/go-resty/resty/v2 v2.13.1
 	github.com/joho/godotenv v1.5.1
-	github.com/soumitsalman/beansack v0.0.3
+	github.com/soumitsalman/beansack v0.0.4
 	github.com/soumitsalman/data-utils v0.0.0-20240411181743-1067a6fce2ca
-	github.com/soumitsalman/newscollector v0.1.3
+	github.com/soumitsalman/newscollector v0.1.4
 )
 
 require (
